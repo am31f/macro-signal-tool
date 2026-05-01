@@ -1,0 +1,437 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "last_updated": "2026-04-30",
+    "description": "Asset universe con dati storici di reazione per categoria evento. Fonti: annual report, Bloomberg segmentation pubblica, ricerca accademica (Caldara-Iacoviello 2022, Conflitti storici 1990-2026).",
+    "task": "Phase 1, Task 1.2"
+  },
+
+  "etf_universe": [
+    {
+      "ticker": "XLE",
+      "name": "Energy Select Sector SPDR",
+      "category": "energy",
+      "region": "US",
+      "yfinance_symbol": "XLE",
+      "reaction_by_event": {
+        "ENERGY_SUPPLY_SHOCK": {"avg_move_pct": 8.5, "direction": "LONG", "win_rate": 0.78, "avg_holding_days": 20, "source": "Gulf War, Ukraine 2022, Iran 2026"},
+        "MILITARY_CONFLICT": {"avg_move_pct": 5.2, "direction": "LONG", "win_rate": 0.71, "avg_holding_days": 15},
+        "SANCTIONS_IMPOSED": {"avg_move_pct": 4.1, "direction": "LONG", "win_rate": 0.68, "avg_holding_days": 30}
+      }
+    },
+    {
+      "ticker": "XOP",
+      "name": "SPDR S&P Oil & Gas E&P ETF",
+      "category": "energy_EP",
+      "region": "US",
+      "yfinance_symbol": "XOP",
+      "reaction_by_event": {
+        "ENERGY_SUPPLY_SHOCK": {"avg_move_pct": 12.3, "direction": "LONG", "win_rate": 0.76, "avg_holding_days": 20, "note": "Higher beta vs XLE, più volatile"},
+        "MILITARY_CONFLICT": {"avg_move_pct": 7.8, "direction": "LONG", "win_rate": 0.69, "avg_holding_days": 15}
+      }
+    },
+    {
+      "ticker": "ITA",
+      "name": "iShares US Aerospace & Defense ETF",
+      "category": "defense",
+      "region": "US",
+      "yfinance_symbol": "ITA",
+      "reaction_by_event": {
+        "MILITARY_CONFLICT": {"avg_move_pct": 5.2, "direction": "LONG", "win_rate": 0.82, "avg_holding_days": 60, "source": "9/11 +30% a 12M, Ukraine LMT +37%"},
+        "NUCLEAR_THREAT": {"avg_move_pct": 3.8, "direction": "LONG", "win_rate": 0.70, "avg_holding_days": 10},
+        "CYBER_ATTACK": {"avg_move_pct": 2.1, "direction": "LONG", "win_rate": 0.65, "avg_holding_days": 20}
+      }
+    },
+    {
+      "ticker": "CIBR",
+      "name": "First Trust NASDAQ Cybersecurity ETF",
+      "category": "cybersecurity",
+      "region": "US",
+      "yfinance_symbol": "CIBR",
+      "reaction_by_event": {
+        "CYBER_ATTACK": {"avg_move_pct": 4.5, "direction": "LONG", "win_rate": 0.74, "avg_holding_days": 15},
+        "MILITARY_CONFLICT": {"avg_move_pct": 2.2, "direction": "LONG", "win_rate": 0.61, "avg_holding_days": 20}
+      }
+    },
+    {
+      "ticker": "HACK",
+      "name": "ETFMG Prime Cyber Security ETF",
+      "category": "cybersecurity",
+      "region": "global",
+      "yfinance_symbol": "HACK",
+      "reaction_by_event": {
+        "CYBER_ATTACK": {"avg_move_pct": 4.1, "direction": "LONG", "win_rate": 0.72, "avg_holding_days": 15}
+      }
+    },
+    {
+      "ticker": "GLD",
+      "name": "SPDR Gold Shares",
+      "category": "gold",
+      "region": "global",
+      "yfinance_symbol": "GLD",
+      "reaction_by_event": {
+        "MILITARY_CONFLICT": {"avg_move_pct": 3.1, "direction": "LONG", "win_rate": 0.73, "avg_holding_days": 30, "note": "Safe haven classico. Eccezione: non funziona se inflazione domina (2022)"},
+        "NUCLEAR_THREAT": {"avg_move_pct": 5.8, "direction": "LONG", "win_rate": 0.81, "avg_holding_days": 10},
+        "SOVEREIGN_CRISIS": {"avg_move_pct": 4.2, "direction": "LONG", "win_rate": 0.75, "avg_holding_days": 45},
+        "ENERGY_SUPPLY_SHOCK": {"avg_move_pct": 2.8, "direction": "LONG", "win_rate": 0.67, "avg_holding_days": 20}
+      }
+    },
+    {
+      "ticker": "GDX",
+      "name": "VanEck Gold Miners ETF",
+      "category": "gold_miners",
+      "region": "global",
+      "yfinance_symbol": "GDX",
+      "leverage_vs_gold": 2.1,
+      "reaction_by_event": {
+        "MILITARY_CONFLICT": {"avg_move_pct": 6.5, "direction": "LONG", "win_rate": 0.68, "avg_holding_days": 30, "note": "2x leverage vs gold ma con noise operativo aggiuntivo"},
+        "NUCLEAR_THREAT": {"avg_move_pct": 11.2, "direction": "LONG", "win_rate": 0.75, "avg_holding_days": 10}
+      }
+    },
+    {
+      "ticker": "TLT",
+      "name": "iShares 20+ Year Treasury Bond ETF",
+      "category": "bonds_long",
+      "region": "US",
+      "yfinance_symbol": "TLT",
+      "reaction_by_event": {
+        "MILITARY_CONFLICT": {"avg_move_pct": 2.5, "direction": "LONG_CONDITIONAL", "win_rate": 0.55, "avg_holding_days": 20, "condition": "Solo se Fed in ciclo di taglio. NON safe haven in regime inflazionistico (2022: -35%)"},
+        "SOVEREIGN_CRISIS": {"avg_move_pct": 3.1, "direction": "LONG", "win_rate": 0.70, "avg_holding_days": 30, "note": "Flight to quality verso US Treasuries"},
+        "CENTRAL_BANK_SURPRISE_DOVISH": {"avg_move_pct": 4.2, "direction": "LONG", "win_rate": 0.78, "avg_holding_days": 15}
+      }
+    },
+    {
+      "ticker": "DBA",
+      "name": "Invesco DB Agriculture Fund",
+      "category": "agriculture",
+      "region": "global",
+      "yfinance_symbol": "DBA",
+      "reaction_by_event": {
+        "COMMODITY_SUPPLY_AGRI": {"avg_move_pct": 6.8, "direction": "LONG", "win_rate": 0.69, "avg_holding_days": 45},
+        "MILITARY_CONFLICT": {"avg_move_pct": 3.2, "direction": "LONG", "win_rate": 0.61, "avg_holding_days": 30, "note": "Solo se conflitto in zona agricola (Ucraina, Mar Nero)"}
+      }
+    },
+    {
+      "ticker": "XAR",
+      "name": "SPDR S&P Aerospace & Defense ETF",
+      "category": "defense",
+      "region": "US",
+      "yfinance_symbol": "XAR",
+      "reaction_by_event": {
+        "MILITARY_CONFLICT": {"avg_move_pct": 4.8, "direction": "LONG", "win_rate": 0.79, "avg_holding_days": 60}
+      }
+    },
+    {
+      "ticker": "WEAT",
+      "name": "Teucrium Wheat Fund",
+      "category": "agriculture_wheat",
+      "region": "global",
+      "yfinance_symbol": "WEAT",
+      "reaction_by_event": {
+        "COMMODITY_SUPPLY_AGRI": {"avg_move_pct": 14.2, "direction": "LONG", "win_rate": 0.67, "avg_holding_days": 30, "source": "Ucraina 2022 +60% in 3 settimane"},
+        "INFRASTRUCTURE_DISRUPTION": {"avg_move_pct": 8.5, "direction": "LONG", "win_rate": 0.64, "avg_holding_days": 20}
+      }
+    },
+    {
+      "ticker": "CORN",
+      "name": "Teucrium Corn Fund",
+      "category": "agriculture_corn",
+      "region": "global",
+      "yfinance_symbol": "CORN",
+      "reaction_by_event": {
+        "COMMODITY_SUPPLY_AGRI": {"avg_move_pct": 10.1, "direction": "LONG", "win_rate": 0.63, "avg_holding_days": 30}
+      }
+    }
+  ],
+
+  "single_stocks_universe": [
+    {
+      "ticker": "XOM",
+      "name": "ExxonMobil",
+      "sector": "energy",
+      "sub": "integrated",
+      "yfinance_symbol": "XOM",
+      "geographic_exposure": {
+        "middle_east_pct": 8,
+        "russia_cis_pct": 0,
+        "china_pct": 12,
+        "em_other_pct": 35,
+        "us_canada_pct": 45
+      },
+      "reaction_by_event": {
+        "ENERGY_SUPPLY_SHOCK": {"avg_move_pct": 7.2, "direction": "LONG", "win_rate": 0.72, "avg_holding_days": 20},
+        "MILITARY_CONFLICT_MIDDLE_EAST": {"avg_move_pct": 5.8, "direction": "LONG", "win_rate": 0.70}
+      },
+      "hormuz_exposure": "LOW",
+      "russia_exposure": "NONE",
+      "oil_sensitivity_ebit_per_10pct_brent": 2.1
+    },
+    {
+      "ticker": "CVX",
+      "name": "Chevron",
+      "sector": "energy",
+      "sub": "integrated",
+      "yfinance_symbol": "CVX",
+      "geographic_exposure": {
+        "middle_east_pct": 15,
+        "russia_cis_pct": 0,
+        "china_pct": 8,
+        "em_other_pct": 32,
+        "us_canada_pct": 45
+      },
+      "reaction_by_event": {
+        "ENERGY_SUPPLY_SHOCK": {"avg_move_pct": 6.8, "direction": "LONG", "win_rate": 0.71, "avg_holding_days": 20},
+        "SANCTIONS_IMPOSED": {"avg_move_pct": 3.2, "direction": "LONG", "win_rate": 0.62, "note": "Beneficia da riduzione offerta concorrente"}
+      },
+      "hormuz_exposure": "LOW",
+      "russia_exposure": "NONE",
+      "oil_sensitivity_ebit_per_10pct_brent": 1.9
+    },
+    {
+      "ticker": "TTE",
+      "name": "TotalEnergies",
+      "sector": "energy",
+      "sub": "integrated",
+      "yfinance_symbol": "TTE",
+      "geographic_exposure": {
+        "middle_east_pct": 28,
+        "russia_cis_pct": 8,
+        "africa_pct": 22,
+        "china_pct": 5,
+        "eu_pct": 20,
+        "other_pct": 17
+      },
+      "reaction_by_event": {
+        "ENERGY_SUPPLY_SHOCK": {"avg_move_pct": 8.1, "direction": "LONG", "win_rate": 0.73, "avg_holding_days": 20},
+        "SANCTIONS_IMPOSED_RUSSIA": {"avg_move_pct": -4.2, "direction": "SHORT", "win_rate": 0.65, "note": "Esposizione residua Russia (Yamal LNG)"},
+        "MILITARY_CONFLICT_MIDDLE_EAST": {"avg_move_pct": -2.1, "direction": "SHORT", "win_rate": 0.58, "note": "Alta esposizione Middle East, rischio asset"}
+      },
+      "hormuz_exposure": "HIGH",
+      "russia_exposure": "MEDIUM",
+      "china_exposure": "MEDIUM",
+      "oil_sensitivity_ebit_per_10pct_brent": 2.3
+    },
+    {
+      "ticker": "LMT",
+      "name": "Lockheed Martin",
+      "sector": "defense",
+      "sub": "prime_contractor",
+      "yfinance_symbol": "LMT",
+      "products_key": ["F-35", "THAAD", "Missiles", "Aegis"],
+      "reaction_by_event": {
+        "MILITARY_CONFLICT": {"avg_move_pct": 8.3, "direction": "LONG", "win_rate": 0.85, "avg_holding_days": 90, "source": "9/11: +35% a 12M; Ukraine 2022: +37%"},
+        "NUCLEAR_THREAT": {"avg_move_pct": 5.1, "direction": "LONG", "win_rate": 0.78, "avg_holding_days": 30},
+        "ENERGY_SUPPLY_SHOCK": {"avg_move_pct": 2.8, "direction": "LONG", "win_rate": 0.61}
+      },
+      "geographic_exposure": {"us_government_pct": 72, "international_pct": 28}
+    },
+    {
+      "ticker": "RTX",
+      "name": "RTX Corp (Raytheon)",
+      "sector": "defense",
+      "sub": "missiles_avionics",
+      "yfinance_symbol": "RTX",
+      "reaction_by_event": {
+        "MILITARY_CONFLICT": {"avg_move_pct": 7.1, "direction": "LONG", "win_rate": 0.82, "avg_holding_days": 90},
+        "CYBER_ATTACK": {"avg_move_pct": 3.2, "direction": "LONG", "win_rate": 0.65},
+        "NUCLEAR_THREAT": {"avg_move_pct": 4.8, "direction": "LONG", "win_rate": 0.75}
+      },
+      "geographic_exposure": {"us_government_pct": 58, "international_defense_pct": 25, "commercial_aviation_pct": 17}
+    },
+    {
+      "ticker": "NOC",
+      "name": "Northrop Grumman",
+      "sector": "defense",
+      "sub": "electronics_cyber_stealth",
+      "yfinance_symbol": "NOC",
+      "reaction_by_event": {
+        "MILITARY_CONFLICT": {"avg_move_pct": 6.5, "direction": "LONG", "win_rate": 0.80, "avg_holding_days": 90},
+        "CYBER_ATTACK": {"avg_move_pct": 4.8, "direction": "LONG", "win_rate": 0.72, "note": "Forte in cyber difensivo governativo"}
+      }
+    },
+    {
+      "ticker": "GD",
+      "name": "General Dynamics",
+      "sector": "defense",
+      "sub": "vehicles_submarines_IT",
+      "yfinance_symbol": "GD",
+      "reaction_by_event": {
+        "MILITARY_CONFLICT": {"avg_move_pct": 5.8, "direction": "LONG", "win_rate": 0.78, "avg_holding_days": 60}
+      }
+    },
+    {
+      "ticker": "FRO",
+      "name": "Frontline PLC",
+      "sector": "shipping",
+      "sub": "VLCC_tanker",
+      "yfinance_symbol": "FRO",
+      "reaction_by_event": {
+        "ENERGY_SUPPLY_SHOCK": {"avg_move_pct": 15.2, "direction": "LONG", "win_rate": 0.74, "avg_holding_days": 25, "note": "Rerouting tanker = più miglia, più ricavi"},
+        "INFRASTRUCTURE_DISRUPTION": {"avg_move_pct": 18.5, "direction": "LONG", "win_rate": 0.71, "avg_holding_days": 20, "note": "Chiusura Suez/Hormuz → spike immediato noli"},
+        "MILITARY_CONFLICT_MIDDLE_EAST": {"avg_move_pct": -8.2, "direction": "SHORT", "win_rate": 0.62, "note": "Rischio asset se conflitto diretto in zona transito"}
+      },
+      "hormuz_dependency": "HIGH",
+      "suez_dependency": "HIGH"
+    },
+    {
+      "ticker": "NTR",
+      "name": "Nutrien",
+      "sector": "agriculture",
+      "sub": "fertilizers_potash",
+      "yfinance_symbol": "NTR",
+      "reaction_by_event": {
+        "COMMODITY_SUPPLY_AGRI": {"avg_move_pct": 11.8, "direction": "LONG", "win_rate": 0.71, "avg_holding_days": 60},
+        "SANCTIONS_IMPOSED_RUSSIA_BELARUS": {"avg_move_pct": 22.5, "direction": "LONG", "win_rate": 0.78, "source": "2022: +40% in 6 settimane post sanzioni Bielorussia potash"},
+        "MILITARY_CONFLICT_UKRAINE": {"avg_move_pct": 18.3, "direction": "LONG", "win_rate": 0.75}
+      },
+      "russia_ukraine_sensitivity": "HIGH",
+      "note": "Russia + Bielorussia = ~40% global potash supply"
+    },
+    {
+      "ticker": "MOS",
+      "name": "Mosaic Company",
+      "sector": "agriculture",
+      "sub": "fertilizers_phosphate_potash",
+      "yfinance_symbol": "MOS",
+      "reaction_by_event": {
+        "COMMODITY_SUPPLY_AGRI": {"avg_move_pct": 13.1, "direction": "LONG", "win_rate": 0.68, "avg_holding_days": 60},
+        "SANCTIONS_IMPOSED_RUSSIA": {"avg_move_pct": 19.2, "direction": "LONG", "win_rate": 0.74}
+      }
+    },
+    {
+      "ticker": "CF",
+      "name": "CF Industries",
+      "sector": "agriculture",
+      "sub": "fertilizers_nitrogen",
+      "yfinance_symbol": "CF",
+      "reaction_by_event": {
+        "ENERGY_SUPPLY_SHOCK": {"avg_move_pct": 9.8, "direction": "LONG", "win_rate": 0.70, "note": "Gas naturale = 70-80% costo produzione NH3. Oil shock = nitrogen spike"},
+        "COMMODITY_SUPPLY_AGRI": {"avg_move_pct": 12.4, "direction": "LONG", "win_rate": 0.72, "source": "Ukraine 2022: CF +40% in Q1"}
+      }
+    },
+    {
+      "ticker": "PANW",
+      "name": "Palo Alto Networks",
+      "sector": "cybersecurity",
+      "sub": "platform_SASE",
+      "yfinance_symbol": "PANW",
+      "reaction_by_event": {
+        "CYBER_ATTACK": {"avg_move_pct": 5.8, "direction": "LONG", "win_rate": 0.76, "avg_holding_days": 20},
+        "MILITARY_CONFLICT": {"avg_move_pct": 3.1, "direction": "LONG", "win_rate": 0.64}
+      }
+    },
+    {
+      "ticker": "CRWD",
+      "name": "CrowdStrike",
+      "sector": "cybersecurity",
+      "sub": "endpoint_detection",
+      "yfinance_symbol": "CRWD",
+      "reaction_by_event": {
+        "CYBER_ATTACK": {"avg_move_pct": 6.2, "direction": "LONG", "win_rate": 0.75, "avg_holding_days": 20},
+        "MILITARY_CONFLICT": {"avg_move_pct": 3.5, "direction": "LONG", "win_rate": 0.65}
+      }
+    },
+    {
+      "ticker": "DAL",
+      "name": "Delta Air Lines",
+      "sector": "aviation",
+      "sub": "US_major_carrier",
+      "yfinance_symbol": "DAL",
+      "reaction_by_event": {
+        "ENERGY_SUPPLY_SHOCK": {"avg_move_pct": -9.2, "direction": "SHORT", "win_rate": 0.76, "avg_holding_days": 20},
+        "MILITARY_CONFLICT": {"avg_move_pct": -6.5, "direction": "SHORT", "win_rate": 0.70},
+        "PANDEMIC_HEALTH": {"avg_move_pct": -35.0, "direction": "SHORT", "win_rate": 0.85}
+      },
+      "oil_sensitivity_ebit_per_10pct_brent": -1.5,
+      "fuel_cost_pct_opex": 22
+    },
+    {
+      "ticker": "UAL",
+      "name": "United Airlines",
+      "sector": "aviation",
+      "sub": "US_major_carrier",
+      "yfinance_symbol": "UAL",
+      "reaction_by_event": {
+        "ENERGY_SUPPLY_SHOCK": {"avg_move_pct": -10.8, "direction": "SHORT", "win_rate": 0.77, "avg_holding_days": 20},
+        "MILITARY_CONFLICT": {"avg_move_pct": -7.2, "direction": "SHORT", "win_rate": 0.72},
+        "PANDEMIC_HEALTH": {"avg_move_pct": -40.0, "direction": "SHORT", "win_rate": 0.85}
+      },
+      "oil_sensitivity_ebit_per_10pct_brent": -1.8,
+      "fuel_cost_pct_opex": 24
+    },
+    {
+      "ticker": "NEM",
+      "name": "Newmont",
+      "sector": "gold_miners",
+      "sub": "major_miner",
+      "yfinance_symbol": "NEM",
+      "reaction_by_event": {
+        "MILITARY_CONFLICT": {"avg_move_pct": 7.2, "direction": "LONG", "win_rate": 0.70, "avg_holding_days": 30},
+        "NUCLEAR_THREAT": {"avg_move_pct": 12.5, "direction": "LONG", "win_rate": 0.77},
+        "SOVEREIGN_CRISIS": {"avg_move_pct": 9.1, "direction": "LONG", "win_rate": 0.72}
+      },
+      "leverage_vs_gold": 2.3,
+      "note": "Per ogni +10% gold, NEM tipicamente +23%"
+    },
+    {
+      "ticker": "BP",
+      "name": "BP PLC",
+      "sector": "energy",
+      "sub": "integrated",
+      "yfinance_symbol": "BP",
+      "geographic_exposure": {
+        "middle_east_pct": 18,
+        "russia_cis_pct": 4,
+        "north_sea_pct": 20,
+        "us_pct": 30,
+        "other_pct": 28
+      },
+      "reaction_by_event": {
+        "ENERGY_SUPPLY_SHOCK": {"avg_move_pct": 7.5, "direction": "LONG", "win_rate": 0.70},
+        "SANCTIONS_IMPOSED_RUSSIA": {"avg_move_pct": -5.8, "direction": "SHORT", "win_rate": 0.68, "note": "Perdita Rosneft stake 2022 = $25B writedown"}
+      },
+      "hormuz_exposure": "MEDIUM",
+      "russia_exposure": "LOW_RESIDUAL"
+    },
+    {
+      "ticker": "RDS",
+      "name": "Shell PLC",
+      "sector": "energy",
+      "sub": "integrated",
+      "yfinance_symbol": "SHEL",
+      "geographic_exposure": {
+        "middle_east_pct": 12,
+        "russia_cis_pct": 2,
+        "eu_pct": 25,
+        "asia_pct": 28,
+        "other_pct": 33
+      },
+      "reaction_by_event": {
+        "ENERGY_SUPPLY_SHOCK": {"avg_move_pct": 7.1, "direction": "LONG", "win_rate": 0.69},
+        "INFRASTRUCTURE_DISRUPTION_LNG": {"avg_move_pct": 5.2, "direction": "LONG", "win_rate": 0.67}
+      }
+    }
+  ],
+
+  "macro_instruments": [
+    {"ticker": "BRENT", "type": "commodity_future", "yfinance_symbol": "BZ=F", "description": "Brent crude oil front-month"},
+    {"ticker": "WTI", "type": "commodity_future", "yfinance_symbol": "CL=F", "description": "WTI crude oil front-month"},
+    {"ticker": "GOLD", "type": "commodity_future", "yfinance_symbol": "GC=F", "description": "Gold front-month"},
+    {"ticker": "NATGAS", "type": "commodity_future", "yfinance_symbol": "NG=F", "description": "Natural gas Henry Hub"},
+    {"ticker": "WHEAT", "type": "commodity_future", "yfinance_symbol": "ZW=F", "description": "CBOT Wheat"},
+    {"ticker": "DXY", "type": "fx_index", "yfinance_symbol": "DX-Y.NYB", "description": "US Dollar Index"},
+    {"ticker": "EURUSD", "type": "fx_pair", "yfinance_symbol": "EURUSD=X"},
+    {"ticker": "VIX", "type": "volatility_index", "yfinance_symbol": "^VIX", "description": "CBOE Volatility Index"},
+    {"ticker": "US10Y", "type": "bond_yield", "yfinance_symbol": "^TNX", "description": "US 10Y Treasury yield"},
+    {"ticker": "US2Y", "type": "bond_yield", "yfinance_symbol": "^IRX", "description": "US 2Y Treasury yield"},
+    {"ticker": "SPY", "type": "equity_index_etf", "yfinance_symbol": "SPY", "description": "S&P 500 benchmark"},
+    {"ticker": "EWZ", "type": "em_equity", "yfinance_symbol": "EWZ", "description": "Brazil ETF - EM proxy"},
+    {"ticker": "GLD_vol", "type": "derived", "description": "Implicit gold volatility proxy via GLD 1M ATM options"}
+  ],
+
+  "shorts_universe": [
+    {"ticker": "JETS", "name": "US Global Jets ETF", "yfinance_symbol": "JETS", "short_on": ["ENERGY_SUPPLY_SHOCK", "PANDEMIC_HEALTH", "MILITARY_CONFLICT"]},
+    {"ticker": "XLY", "name": "Consumer Discretionary Select SPDR", "yfinance_symbol": "XLY", "short_on": ["ENERGY_SUPPLY_SHOCK", "SOVEREIGN_CRISIS"]},
+    {"ticker": "EEM", "name": "iShares MSCI Emerging Markets ETF", "yfinance_symbol": "EEM", "short_on": ["SOVEREIGN_CRISIS", "NUCLEAR_THREAT", "TRADE_WAR_TARIFF"]}
+  ]
+}

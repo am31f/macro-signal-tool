@@ -1,0 +1,173 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "last_updated": "2026-04-30",
+    "description": "Revenue breakdown geografico per ~50 ticker. Fonte: annual report 2024/2025, Bloomberg segmentation pubblica. Usato per filtrare esposizione reale a eventi specifici.",
+    "task": "Phase 1, Task 1.3",
+    "regions": ["US_CANADA", "EU_UK", "MIDDLE_EAST_AFRICA", "RUSSIA_CIS", "CHINA", "ASIA_EX_CHINA", "LATAM", "GLOBAL"]
+  },
+
+  "companies": [
+    {"ticker": "XOM", "name": "ExxonMobil", "fiscal_year": 2024,
+     "revenue_breakdown": {"US_CANADA": 45, "EU_UK": 8, "MIDDLE_EAST_AFRICA": 8, "RUSSIA_CIS": 0, "CHINA": 12, "ASIA_EX_CHINA": 15, "LATAM": 12},
+     "critical_regions": [], "notes": "Divestita Russia post-2022"},
+
+    {"ticker": "CVX", "name": "Chevron", "fiscal_year": 2024,
+     "revenue_breakdown": {"US_CANADA": 45, "EU_UK": 5, "MIDDLE_EAST_AFRICA": 15, "RUSSIA_CIS": 0, "CHINA": 8, "ASIA_EX_CHINA": 18, "LATAM": 9},
+     "critical_regions": ["MIDDLE_EAST_AFRICA"], "notes": "Tengiz field Kazakhstan; Permian dominante"},
+
+    {"ticker": "TTE", "name": "TotalEnergies", "fiscal_year": 2024,
+     "revenue_breakdown": {"EU_UK": 20, "MIDDLE_EAST_AFRICA": 28, "RUSSIA_CIS": 8, "CHINA": 5, "ASIA_EX_CHINA": 12, "US_CANADA": 15, "LATAM": 12},
+     "critical_regions": ["MIDDLE_EAST_AFRICA", "RUSSIA_CIS"],
+     "notes": "Yamal LNG Russia (residuale); Qatar LNG significativo; Africa (Nigeria, Angola, Congo) importante"},
+
+    {"ticker": "BP", "name": "BP PLC", "fiscal_year": 2024,
+     "revenue_breakdown": {"US_CANADA": 30, "EU_UK": 20, "MIDDLE_EAST_AFRICA": 18, "RUSSIA_CIS": 4, "CHINA": 6, "ASIA_EX_CHINA": 15, "LATAM": 7},
+     "critical_regions": ["RUSSIA_CIS"],
+     "notes": "Rosneft stake svalutato 2022 (-$25B). Residua esposizione operativa"},
+
+    {"ticker": "SHEL", "name": "Shell PLC", "fiscal_year": 2024,
+     "revenue_breakdown": {"EU_UK": 25, "MIDDLE_EAST_AFRICA": 12, "RUSSIA_CIS": 2, "CHINA": 15, "ASIA_EX_CHINA": 28, "US_CANADA": 12, "LATAM": 6},
+     "critical_regions": ["CHINA", "ASIA_EX_CHINA"],
+     "notes": "LNG Australia e Qatar rilevanti; trading desk globale"},
+
+    {"ticker": "LMT", "name": "Lockheed Martin", "fiscal_year": 2024,
+     "revenue_breakdown": {"US_CANADA": 72, "EU_UK": 10, "MIDDLE_EAST_AFRICA": 12, "ASIA_EX_CHINA": 6},
+     "critical_regions": [],
+     "notes": "72% US gov. F-35 export a EU e Giappone. Middle East = Arabia Saudita, UAE, Israel"},
+
+    {"ticker": "RTX", "name": "RTX Corp", "fiscal_year": 2024,
+     "revenue_breakdown": {"US_CANADA": 58, "EU_UK": 18, "MIDDLE_EAST_AFRICA": 12, "ASIA_EX_CHINA": 8, "OTHER": 4},
+     "critical_regions": [],
+     "notes": "Pratt & Whitney motori commerciali (17% rev) = esposizione civile"},
+
+    {"ticker": "NOC", "name": "Northrop Grumman", "fiscal_year": 2024,
+     "revenue_breakdown": {"US_CANADA": 83, "EU_UK": 8, "MIDDLE_EAST_AFRICA": 6, "OTHER": 3},
+     "critical_regions": [],
+     "notes": "Molto concentrato US gov (B-21, missile defense)"},
+
+    {"ticker": "GD", "name": "General Dynamics", "fiscal_year": 2024,
+     "revenue_breakdown": {"US_CANADA": 65, "EU_UK": 20, "MIDDLE_EAST_AFRICA": 8, "OTHER": 7},
+     "critical_regions": [],
+     "notes": "Gulfstream jets (corporate aviation) = 20% rev, sensibile recessione"},
+
+    {"ticker": "DAL", "name": "Delta Air Lines", "fiscal_year": 2024,
+     "revenue_breakdown": {"US_CANADA": 72, "EU_UK": 14, "LATAM": 7, "ASIA_EX_CHINA": 5, "OTHER": 2},
+     "critical_regions": [],
+     "oil_sensitivity_ebit_per_10pct_brent": -1.5,
+     "notes": "Maggioranza domestico US. Hedging parziale fuel. Ogni +10% Brent = -$400M EBIT approx"},
+
+    {"ticker": "UAL", "name": "United Airlines", "fiscal_year": 2024,
+     "revenue_breakdown": {"US_CANADA": 68, "EU_UK": 12, "ASIA_EX_CHINA": 10, "LATAM": 6, "OTHER": 4},
+     "critical_regions": [],
+     "oil_sensitivity_ebit_per_10pct_brent": -1.8,
+     "notes": "Più esposta Asia rispetto a DAL"},
+
+    {"ticker": "FRO", "name": "Frontline PLC", "fiscal_year": 2024,
+     "revenue_breakdown": {"GLOBAL": 100},
+     "critical_regions": ["MIDDLE_EAST_AFRICA"],
+     "notes": "VLCC tanker. Rate cargo dipendono da rotte (Hormuz, Suez). Chiusura = spike noli +50-200%"},
+
+    {"ticker": "NTR", "name": "Nutrien", "fiscal_year": 2024,
+     "revenue_breakdown": {"US_CANADA": 50, "LATAM": 20, "EU_UK": 12, "ASIA_EX_CHINA": 10, "OTHER": 8},
+     "critical_regions": ["RUSSIA_CIS"],
+     "notes": "Russia+Belarus = 40% global potash. NTR produce in Saskatchewan. Beneficia da sanzioni Russia"},
+
+    {"ticker": "MOS", "name": "Mosaic Company", "fiscal_year": 2024,
+     "revenue_breakdown": {"US_CANADA": 38, "LATAM": 32, "EU_UK": 15, "ASIA_EX_CHINA": 10, "OTHER": 5},
+     "critical_regions": ["RUSSIA_CIS"],
+     "notes": "Fosfati + potash. Brasile 32% = esposizione BRL"},
+
+    {"ticker": "CF", "name": "CF Industries", "fiscal_year": 2024,
+     "revenue_breakdown": {"US_CANADA": 55, "EU_UK": 30, "OTHER": 15},
+     "critical_regions": [],
+     "notes": "Nitrogen fertilizers. Costo dominato da gas naturale. UK/EU plants: esposizione gas EU"},
+
+    {"ticker": "PANW", "name": "Palo Alto Networks", "fiscal_year": 2024,
+     "revenue_breakdown": {"US_CANADA": 68, "EU_UK": 18, "ASIA_EX_CHINA": 9, "OTHER": 5},
+     "critical_regions": [],
+     "notes": "B2B cybersecurity. Contratti gov US + enterprise globale"},
+
+    {"ticker": "CRWD", "name": "CrowdStrike", "fiscal_year": 2024,
+     "revenue_breakdown": {"US_CANADA": 65, "EU_UK": 20, "ASIA_EX_CHINA": 10, "OTHER": 5},
+     "critical_regions": [],
+     "notes": "SaaS security cloud-native"},
+
+    {"ticker": "NEM", "name": "Newmont", "fiscal_year": 2024,
+     "revenue_breakdown": {"US_CANADA": 25, "LATAM": 30, "AFRICA": 20, "ASIA_EX_CHINA": 15, "EU_UK": 10},
+     "critical_regions": ["LATAM", "AFRICA"],
+     "notes": "Mines in Nevada, Peru, Ghana, Australia, Suriname. Rischio politico EM"},
+
+    {"ticker": "AAPL", "name": "Apple", "fiscal_year": 2024,
+     "revenue_breakdown": {"US_CANADA": 44, "EU_UK": 24, "CHINA": 17, "ASIA_EX_CHINA": 8, "OTHER": 7},
+     "critical_regions": ["CHINA"],
+     "notes": "Manufacturing 90%+ in Cina. Supply chain risk da escalation US-China"},
+
+    {"ticker": "NVDA", "name": "NVIDIA", "fiscal_year": 2024,
+     "revenue_breakdown": {"US_CANADA": 28, "EU_UK": 12, "CHINA": 17, "ASIA_EX_CHINA": 38, "OTHER": 5},
+     "critical_regions": ["CHINA", "ASIA_EX_CHINA"],
+     "notes": "Export controls H100/A100 vs Cina già attivi. Taiwan TSMC dependency critica"},
+
+    {"ticker": "TSM", "name": "TSMC", "fiscal_year": 2024,
+     "revenue_breakdown": {"US_CANADA": 68, "EU_UK": 5, "CHINA": 12, "ASIA_EX_CHINA": 12, "OTHER": 3},
+     "critical_regions": ["CHINA"],
+     "notes": "Fab principale Taiwan. Rischio geopolitico Taiwan Strait = esistenziale per ticker"},
+
+    {"ticker": "ASML", "name": "ASML", "fiscal_year": 2024,
+     "revenue_breakdown": {"EU_UK": 12, "US_CANADA": 18, "CHINA": 29, "ASIA_EX_CHINA": 35, "OTHER": 6},
+     "critical_regions": ["CHINA"],
+     "notes": "EUV restricted export a China (CAGR China revenue in decline). Beneficia da EU/US chip onshoring"},
+
+    {"ticker": "HSBA", "name": "HSBC", "fiscal_year": 2024,
+     "revenue_breakdown": {"EU_UK": 30, "CHINA": 22, "ASIA_EX_CHINA": 38, "MIDDLE_EAST_AFRICA": 5, "OTHER": 5},
+     "critical_regions": ["CHINA", "ASIA_EX_CHINA"],
+     "notes": "Alta esposizione HK/Cina. Esposizione SWIFT/sanzioni se US-China escalation"},
+
+    {"ticker": "BNP", "name": "BNP Paribas", "fiscal_year": 2024,
+     "revenue_breakdown": {"EU_UK": 65, "US_CANADA": 12, "MIDDLE_EAST_AFRICA": 8, "ASIA_EX_CHINA": 10, "OTHER": 5},
+     "critical_regions": ["RUSSIA_CIS"],
+     "notes": "Esposizione Russia ridotta post-2022 ma non zero. Vulnerabile da sovereign crisis EU"},
+
+    {"ticker": "LVMH", "name": "LVMH", "fiscal_year": 2024,
+     "revenue_breakdown": {"EU_UK": 22, "US_CANADA": 24, "CHINA": 20, "ASIA_EX_CHINA": 25, "OTHER": 9},
+     "critical_regions": ["CHINA"],
+     "notes": "Luxury: short in crisi, ma China consumer è il driver principale"},
+
+    {"ticker": "AIR", "name": "Airbus", "fiscal_year": 2024,
+     "revenue_breakdown": {"EU_UK": 28, "US_CANADA": 22, "CHINA": 15, "ASIA_EX_CHINA": 18, "MIDDLE_EAST_AFRICA": 12, "OTHER": 5},
+     "critical_regions": ["CHINA", "RUSSIA_CIS"],
+     "notes": "Russia: 150+ jet impounded 2022, ~$2B loss. China: backlog a rischio escalation"},
+
+    {"ticker": "ENI", "name": "ENI SpA", "fiscal_year": 2024,
+     "revenue_breakdown": {"EU_UK": 25, "MIDDLE_EAST_AFRICA": 40, "US_CANADA": 10, "RUSSIA_CIS": 5, "OTHER": 20},
+     "critical_regions": ["MIDDLE_EAST_AFRICA", "RUSSIA_CIS"],
+     "notes": "Alta Africa (Libia, Nigeria, Congo, Mozambico). Rischio geopolitico MENA alto"},
+
+    {"ticker": "ENEL", "name": "Enel", "fiscal_year": 2024,
+     "revenue_breakdown": {"EU_UK": 50, "LATAM": 32, "MIDDLE_EAST_AFRICA": 5, "OTHER": 13},
+     "critical_regions": ["LATAM"],
+     "notes": "Utility. Sensibile a gas EU price shock"},
+
+    {"ticker": "STMN", "name": "STMicroelectronics", "fiscal_year": 2024,
+     "revenue_breakdown": {"EU_UK": 22, "US_CANADA": 30, "CHINA": 18, "ASIA_EX_CHINA": 25, "OTHER": 5},
+     "critical_regions": ["CHINA"],
+     "notes": "Auto + industrial semis. Supply chain EU. Beneficia da CHIPS Act"}
+  ],
+
+  "sector_aggregates": {
+    "aviation": {
+      "tickers": ["DAL", "UAL", "LUV", "AAL", "RYA.IR"],
+      "typical_reaction_energy_shock": {"pct": -10, "direction": "SHORT", "win_rate": 0.78},
+      "typical_reaction_pandemic": {"pct": -40, "direction": "SHORT", "win_rate": 0.90}
+    },
+    "defense_prime": {
+      "tickers": ["LMT", "RTX", "NOC", "GD", "BA"],
+      "typical_reaction_conflict": {"pct": 7, "direction": "LONG", "win_rate": 0.82},
+      "structural_trade_duration_days": 90
+    },
+    "eu_banks_russia_exposed": {
+      "tickers": ["BNP", "SocGen", "UniCredit", "Raiffeisen"],
+      "typical_reaction_russia_escalation": {"pct": -12, "direction": "SHORT", "win_rate": 0.72}
+    }
+  }
+}
