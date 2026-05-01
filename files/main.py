@@ -96,7 +96,12 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://macro-signal-tool-cue1rnn1e-am31fs-projects.vercel.app",
+        "https://macro-signal-tool.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -120,7 +125,7 @@ async def startup_event():
         scheduler.add_job(
             _scheduled_news_fetch,
             "interval",
-            hours=1,
+            hours=4,
             id="news_fetch",
             replace_existing=True,
         )
@@ -144,7 +149,7 @@ async def startup_event():
             )
             logger.info("APScheduler: digest email schedulato alle 8:00 ✅")
         scheduler.start()
-        logger.info("APScheduler avviato: news ogni 1h, prezzi ogni 15min ✅")
+        logger.info("APScheduler avviato: news ogni 4h, prezzi ogni 15min ✅")
     except ImportError:
         logger.warning("APScheduler non installato — polling automatico disabilitato")
 
