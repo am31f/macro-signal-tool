@@ -318,11 +318,18 @@ def compute_composite_confidence(news: dict, cross_result: dict) -> float:
     materiality = float(news.get("materiality_score", 0.0))
     novelty = float(news.get("novelty_score", 0.0))
 
-    # Estrai size_multiplier dal cross_result (default 1.0 se non presente)
+    # Estrai size_multiplier e confirmation_level dal cross_result
     size_multiplier = float(cross_result.get("size_multiplier", 1.0))
-    raw_cross_score = float(cross_result.get("confirmation_score", 0)) / 5.0
-    # Scala il contributo cross-asset per il size_multiplier
-    cross_score = raw_cross_score * size_multiplier
+    confirmation_level = str(cross_result.get("confirmation_level", "WEAK")).upper()
+
+    # MARKET_CLOSED: mercati chiusi (weekend/festivi) — usiamo score neutro 0.5
+    # perché non abbiamo dati, non perché il mercato contradica la tesi.
+    # Questo evita di penalizzare segnali validi solo perché arrivano il sabato.
+    if confirmation_level == "MARKET_CLOSED":
+        cross_score = 0.5 * size_multiplier  # score neutro × 0.5 (precauzionale)
+    else:
+        raw_cross_score = float(cross_result.get("confirmation_score", 0)) / 5.0
+        cross_score = raw_cross_score * size_multiplier
 
     timing = str(news.get("entry_timing", "WAIT")).upper()
     if "T+1" in timing or "T1" in timing:
@@ -566,4 +573,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Signal Pipeline — MacroSignalTool")
     parser.add_argument("--test", action="store_true", help="Esegui test con 3 news di esempio")
     parser.add_argument("--input", type=str, help="Path a JSON file con lista di news classificate")
-    args = parser.parse_a
+    args = parser.parse_args()
+
+    if args.test:
+        _run_test()
+    elif args.input:
+        with open(args.input, "r", encoding="utf-8") as f:
+            news_list = json.load(f)
+        output = process_classified_news(news_list)
+        print(json.dumps(output, indent=2, ensure_ascii=False))
+    else:
+        parser.print_help()
+            print(f"     Motivo: {r['reject_reason'][:80]}")

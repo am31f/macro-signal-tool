@@ -428,6 +428,15 @@ def structure_all_signals(signal_candidates: list[dict]) -> list[dict]:
                 "signal_id": signal.get("news_id", ""),
                 "error": str(e),
                 "trade_type": "ERROR",
+                "instruments": [],
+                "conviction_pct": 0,
+                "stop_loss_pct": -7.0,
+                "target_pct": 14.0,
+                "risk_reward_ratio": 2.0,
+                "timeframe_days": 20,
+                "entry_timing": "T+1",
+                "primary_thesis": f"Strutturazione fallita: {str(e)[:100]}",
+                "no_trade_reason": str(e),
             })
         # Rate limit buffer tra chiamate
         if i < len(signal_candidates):
