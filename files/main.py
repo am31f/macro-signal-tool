@@ -722,14 +722,18 @@ async def execute_trade(request: ExecuteRequest):
         raise HTTPException(status_code=400, detail=f"Indice {request.signal_index} fuori range (max {len(_latest_signals)-1})")
 
     enriched = _latest_signals[request.signal_index]
-    result = execute_signal(
-        signal=enriched["signal"],
-        trade_structure=enriched["trade_structure"],
-        sizing_result=enriched["sizing"],
-        db_path=DB_PATH,
-    )
-    from dataclasses import asdict
-    result_dict = asdict(result)
+    try:
+        result = execute_signal(
+            signal=enriched["signal"],
+            trade_structure=enriched["trade_structure"],
+            sizing_result=enriched["sizing"],
+            db_path=DB_PATH,
+        )
+        from dataclasses import asdict
+        result_dict = asdict(result)
+    except Exception as e:
+        logger.error(f"execute_signal error idx={request.signal_index}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Errore esecuzione trade: {str(e)}")
 
     # Phase 6.1: Telegram alert se esecuzione ok
     if _telegram and result.positions_opened:

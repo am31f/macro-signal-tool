@@ -160,8 +160,8 @@ def execute_signal(
         )
 
     instruments = trade_structure.get("instruments", [])
-    stop_loss_pct = trade_structure.get("stop_loss_pct", -7.5)
-    target_pct = trade_structure.get("target_pct", 15.0)
+    stop_loss_pct = trade_structure.get("stop_loss_pct") or -7.5
+    target_pct = trade_structure.get("target_pct") or 15.0
 
     positions_opened = []
     positions_skipped = []
