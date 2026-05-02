@@ -683,6 +683,38 @@ async def execute_trade(request: ExecuteRequest):
             "message": "Imposta confirm=true per eseguire il trade in paper.",
         }
 
+    # Se la cache in memoria è vuota, prova a ricaricarla dal disco
+    if not _latest_signals:
+        cache_path = DATA_DIR / "signals_cache.json"
+        if cache_path.exists():
+            try:
+                cached = json.loads(cache_path.read_text())
+                disk_signals = cached.get("signals", [])
+                for i, s in enumerate(disk_signals):
+                    sig_fields = {k: v for k, v in s.items()
+                                  if k not in ("position_size_eur","kelly_quality","instruments","trade_type",
+                                               "conviction_pct","stop_loss_pct","target_pct",
+                                               "primary_thesis","hedge_suggestion","alternative_scenario")}
+                    _latest_signals.append({
+                        "index": i,
+                        "signal": sig_fields,
+                        "trade_structure": {
+                            "instruments":   s.get("instruments", []),
+                            "trade_type":    s.get("trade_type", "–"),
+                            "conviction_pct": s.get("conviction_pct"),
+                            "stop_loss_pct": s.get("stop_loss_pct"),
+                            "target_pct":    s.get("target_pct"),
+                            "primary_thesis": s.get("primary_thesis", ""),
+                        },
+                        "sizing": {
+                            "position_size_eur": s.get("position_size_eur", 0),
+                            "kelly_quality":     s.get("kelly_quality", "–"),
+                        },
+                    })
+                logger.info(f"execute_trade: caricati {len(_latest_signals)} segnali da disco")
+            except Exception as e:
+                logger.warning(f"execute_trade: errore lettura cache disco: {e}")
+
     if not _latest_signals:
         raise HTTPException(status_code=404, detail="Nessun segnale disponibile. Chiama /signals/run prima.")
 
