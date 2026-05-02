@@ -301,12 +301,135 @@ async def news_debug():
         conn.close()
 
 
+_pipeline_running = False  # flag per sapere se la pipeline è in corso
+
+
+@app.post("/signals/run/async", summary="Lancia pipeline segnali in background (non bloccante)")
+async def run_signals_async(background_tasks: BackgroundTasks, limit: int = 50):
+    """Versione non bloccante di /signals/run. Ritorna subito, la pipeline gira in background."""
+    global _pipeline_running
+    if _pipeline_running:
+        return {"status": "already_running", "message": "Pipeline già in esecuzione. Controlla /signals/latest tra qualche minuto."}
+    background_tasks.add_task(_run_pipeline_sync, limit)
+    return {
+        "status": "started",
+        "message": f"Pipeline avviata in background (limit={limit}). Controlla /signals/latest tra 1-2 minuti.",
+        "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+    }
+
+
+def _run_pipeline_sync(limit: int):
+    """Esegue la pipeline segnali in modo sincrono (chiamato da background task)."""
+    global _pipeline_running, _latest_signals, _latest_pipeline_output
+    _pipeline_running = True
+    try:
+        import sqlite3 as _sqlite3
+        conn = _sqlite3.connect(str(NEWS_DB_PATH))
+        conn.row_factory = _sqlite3.Row
+        rows = conn.execute("""
+            SELECT id, headline, full_text_snippet, source, timestamp_utc, url,
+                   materiality_score, classification_json, classified
+            FROM news WHERE classified = 1
+            ORDER BY timestamp_unix DESC LIMIT ?
+        """, (limit,)).fetchall()
+        conn.close()
+        news_list = []
+        for r in rows:
+            item = dict(r)
+            if item.get("classification_json"):
+                try:
+                    cls = json.loads(item["classification_json"])
+                    item.update(cls)
+                except Exception:
+                    pass
+            news_list.append(item)
+        if not news_list:
+            logger.info("_run_pipeline_sync: nessuna news classificata trovata")
+            return
+
+        logger.info(f"_run_pipeline_sync: avvio pipeline su {len(news_list)} news...")
+        pipeline_output = process_classified_news(news_list)
+        signal_candidates = pipeline_output.get("signal_candidates", [])
+        logger.info(f"_run_pipeline_sync: {len(signal_candidates)} segnali generati")
+
+        structured_trades = []
+        if signal_candidates:
+            structured_trades = structure_all_signals(signal_candidates)
+
+        portfolio_nav = get_portfolio_state(DB_PATH).get("total_nav", 10000)
+        enriched_signals = []
+        for i, signal in enumerate(signal_candidates):
+            trade = structured_trades[i] if i < len(structured_trades) else {}
+            sizing = size_trade(
+                portfolio_nav=portfolio_nav,
+                event_category=signal.get("event_category", ""),
+                conviction_pct=float(trade.get("conviction_pct", 70)),
+                confidence_composite=float(signal.get("confidence_composite", 0.6)),
+                stop_loss_pct=float(trade.get("stop_loss_pct", -7.5)),
+                target_pct=float(trade.get("target_pct", 15.0)),
+            )
+            enriched_signals.append({
+                "index": i,
+                "signal": signal,
+                "trade_structure": trade,
+                "sizing": sizing,
+            })
+
+        _latest_signals = enriched_signals
+        _latest_pipeline_output = pipeline_output
+
+        # Salva cache segnali su disco
+        try:
+            cache_path = DATA_DIR / "signals_cache.json"
+            cache_data = {
+                "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+                "signals": [
+                    {
+                        **es["signal"],
+                        "position_size_eur": es["sizing"].get("position_size_eur", 0),
+                        "kelly_quality":     es["sizing"].get("kelly_quality", "–"),
+                        "instruments":       es["trade_structure"].get("instruments", []),
+                        "trade_type":        es["trade_structure"].get("trade_type", "–"),
+                    }
+                    for es in enriched_signals
+                ],
+            }
+            cache_path.write_text(json.dumps(cache_data, indent=2, default=str))
+            logger.info(f"_run_pipeline_sync: cache salvata ({len(enriched_signals)} segnali)")
+        except Exception as cache_err:
+            logger.warning(f"_run_pipeline_sync: salvataggio cache fallito: {cache_err}")
+
+        # Phase 6.1: Telegram alert per segnali ad alta confidence
+        if _telegram and enriched_signals:
+            signal_threshold = float(os.getenv("TELEGRAM_SIGNAL_THRESHOLD", "0.70"))
+            for es in enriched_signals:
+                conf = es["signal"].get("confidence_composite", 0)
+                if conf >= signal_threshold:
+                    signal_for_alert = {
+                        **es["signal"],
+                        "position_size_eur": es["sizing"].get("position_size_eur", 0),
+                        "kelly_quality":     es["sizing"].get("kelly_quality", "–"),
+                        "instruments":       es["trade_structure"].get("instruments", []),
+                        "trade_type":        es["trade_structure"].get("trade_type", "–"),
+                    }
+                    try:
+                        asyncio.run(_telegram.send_signal_alert(signal_for_alert))
+                    except Exception:
+                        pass
+
+    except Exception as e:
+        logger.error(f"_run_pipeline_sync error: {e}", exc_info=True)
+    finally:
+        _pipeline_running = False
+
+
 @app.get("/signals/run", summary="Esegui pipeline segnali su news recenti")
 async def run_signals(limit: int = 30):
     """
     Carica le ultime N news classificate, le passa alla pipeline a 5 filtri,
     e struttura i trade per i segnali generati.
     Salva i risultati in cache per /signals/latest e /trade/execute.
+    Per batch grandi (>30) usa POST /signals/run/async per evitare timeout.
     """
     global _latest_signals, _latest_pipeline_output
 
@@ -443,6 +566,15 @@ async def run_signals(limit: int = 30):
     }
 
 
+@app.get("/signals/pipeline-status", summary="Stato pipeline segnali (running / idle)")
+async def pipeline_status():
+    return {
+        "running": _pipeline_running,
+        "signals_in_cache": len(_latest_signals),
+        "last_run": _latest_pipeline_output.get("run_timestamp"),
+    }
+
+
 @app.get("/signals/latest", summary="Ultimi segnali in cache")
 async def get_latest_signals():
     if not _latest_signals:
@@ -526,7 +658,7 @@ async def search_news(q: str, limit: int = 50):
     conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute(
-            "SELECT * FROM news WHERE LOWER(headline) LIKE ? OR LOWER(content) LIKE ? ORDER BY published_at DESC LIMIT ?",
+            "SELECT * FROM news WHERE LOWER(headline) LIKE ? OR LOWER(full_text_snippet) LIKE ? ORDER BY timestamp_unix DESC LIMIT ?",
             (f"%{q_lower}%", f"%{q_lower}%", limit)
         ).fetchall()
         return {
@@ -566,11 +698,9 @@ async def get_trade_journal(limit: int = 20):
     return {"count": len(journal), "entries": journal}
 
 
-# ─── Avvio diretto ────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
     logger.info(f"Avvio MacroSignalTool API su http://localhost:{port}")
-    logger.info("Docs: http://localhost:{port}/docs")
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
