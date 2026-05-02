@@ -196,6 +196,42 @@ class CrossAssetResult:
     warning: str = ""
 
 
+# ─── Cache prezzi per sessione (evita N chiamate yfinance per N news) ────────
+# I prezzi vengono scaricati UNA sola volta per run e riutilizzati per tutte le news
+_price_cache: dict[str, Optional[pd.Series]] = {}
+_price_cache_timestamp: Optional[datetime] = None
+CACHE_TTL_MINUTES = 30  # i prezzi scadono dopo 30 minuti
+
+
+def _is_cache_valid() -> bool:
+    if _price_cache_timestamp is None:
+        return False
+    age = (datetime.now(tz=timezone.utc) - _price_cache_timestamp).total_seconds() / 60
+    return age < CACHE_TTL_MINUTES
+
+
+def prefetch_all_assets():
+    """Scarica tutti e 5 gli asset una volta sola e li mette in cache."""
+    global _price_cache, _price_cache_timestamp
+    if _is_cache_valid():
+        logger.info("Cache prezzi valida — skip download")
+        return
+    logger.info("Download prezzi macro (1 volta per tutti le news del batch)...")
+    _price_cache = {}
+    for asset_key, asset_info in MACRO_ASSETS.items():
+        symbol = asset_info["symbol"]
+        _price_cache[symbol] = fetch_price_series(symbol)
+    _price_cache_timestamp = datetime.now(tz=timezone.utc)
+    logger.info(f"Cache prezzi aggiornata: {sum(1 for v in _price_cache.values() if v is not None)}/5 asset disponibili")
+
+
+def get_cached_series(symbol: str) -> Optional[pd.Series]:
+    """Restituisce la serie dalla cache (dopo prefetch_all_assets)."""
+    if not _is_cache_valid():
+        prefetch_all_assets()
+    return _price_cache.get(symbol)
+
+
 # ─── Fetching prezzi ─────────────────────────────────────────────────────────
 
 def is_market_likely_closed() -> tuple[bool, str]:
@@ -311,7 +347,7 @@ def validate_cross_asset(event_category: str) -> CrossAssetResult:
 
     for asset_key, asset_info in MACRO_ASSETS.items():
         symbol = asset_info["symbol"]
-        series = fetch_price_series(symbol)
+        series = get_cached_series(symbol)  # usa cache — NON scarica di nuovo
 
         if series is None:
             # Asset non disponibile: lo consideriamo neutro (non confirming)
@@ -549,12 +585,7 @@ def _run_test():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Cross-Asset Validator — MacroSignalTool")
     parser.add_argument("--test", action="store_true", help="Esegui test rapido con ENERGY_SUPPLY_SHOCK")
-    parser.add_argument(
-        "--category",
-        type=str,
-        default="ENERGY_SUPPLY_SHOCK",
-        help="Categoria evento da validare (default: ENERGY_SUPPLY_SHOCK)",
-    )
+    parser.add_argument("--category", type=str, default="ENERGY_SUPPLY_SHOCK", help="Categoria evento da validare")
     args = parser.parse_args()
 
     if args.test:

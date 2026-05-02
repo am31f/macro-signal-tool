@@ -32,7 +32,7 @@ from typing import Optional
 # Import dei moduli locali
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
-from cross_asset_validator import run_validation, STRONG_THRESHOLD
+from cross_asset_validator import run_validation, prefetch_all_assets, STRONG_THRESHOLD
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -352,6 +352,13 @@ def run_pipeline(classified_news_list: list[dict]) -> PipelineOutput:
     signal_candidates = []
     reject_log = []
 
+    # Pre-fetch prezzi macro UNA volta per tutte le news del batch
+    # (evita N×5 chiamate yfinance — critico per performance)
+    try:
+        prefetch_all_assets()
+    except Exception as e:
+        logger.warning(f"prefetch_all_assets fallito: {e} — il validator userà cache vuota")
+
     for news in classified_news_list:
         news_id = news.get("id", news.get("url", "unknown"))
         headline = news.get("headline", news.get("title", ""))
@@ -559,14 +566,4 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Signal Pipeline — MacroSignalTool")
     parser.add_argument("--test", action="store_true", help="Esegui test con 3 news di esempio")
     parser.add_argument("--input", type=str, help="Path a JSON file con lista di news classificate")
-    args = parser.parse_args()
-
-    if args.test:
-        _run_test()
-    elif args.input:
-        with open(args.input, "r", encoding="utf-8") as f:
-            news_list = json.load(f)
-        output = process_classified_news(news_list)
-        print(json.dumps(output, indent=2, ensure_ascii=False))
-    else:
-        parser.print_help()
+    args = parser.parse_a
