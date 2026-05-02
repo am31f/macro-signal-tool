@@ -598,20 +598,76 @@ async def get_latest_signals():
                 disk_signals = cached.get("signals", [])
                 if disk_signals:
                     logger.info(f"Caricati {len(disk_signals)} segnali da disco (signals_cache.json)")
-                    # Restituisce il formato flat salvato su disco
+                    # I segnali su disco sono flat — avvolgili in nested structure
+                    # per compatibilità con SignalDetail che si aspetta {signal, trade_structure, sizing}
+                    wrapped = []
+                    for i, s in enumerate(disk_signals):
+                        sig_fields = {k: v for k, v in s.items()
+                                      if k not in ("position_size_eur","kelly_quality","instruments","trade_type",
+                                                   "conviction_pct","stop_loss_pct","target_pct",
+                                                   "primary_thesis","hedge_suggestion","alternative_scenario")}
+                        wrapped.append({
+                            "index": i,
+                            "signal": sig_fields,
+                            "trade_structure": {
+                                "instruments":          s.get("instruments", []),
+                                "trade_type":           s.get("trade_type", "–"),
+                                "conviction_pct":       s.get("conviction_pct"),
+                                "stop_loss_pct":        s.get("stop_loss_pct"),
+                                "target_pct":           s.get("target_pct"),
+                                "primary_thesis":       s.get("primary_thesis", ""),
+                                "hedge_suggestion":     s.get("hedge_suggestion", ""),
+                                "alternative_scenario": s.get("alternative_scenario", ""),
+                            },
+                            "sizing": {
+                                "position_size_eur": s.get("position_size_eur", 0),
+                                "kelly_quality":     s.get("kelly_quality", "–"),
+                            },
+                            # Mantieni anche i campi flat per la Dashboard card
+                            **s,
+                        })
                     return {
-                        "count": len(disk_signals),
+                        "count": len(wrapped),
                         "source": "disk_cache",
                         "timestamp": cached.get("timestamp"),
-                        "signals": disk_signals,
+                        "signals": wrapped,
                     }
             except Exception as e:
                 logger.warning(f"Errore lettura signals_cache.json: {e}")
         return {"status": "EMPTY", "message": "Nessun segnale disponibile. Chiama /signals/run/async."}
+    # Restituisce oggetti che includono sia i campi nested (signal/trade_structure/sizing)
+    # sia i campi flat al top level (per la Dashboard card).
+    enriched_out = []
+    for es in _latest_signals:
+        if not isinstance(es, dict):
+            continue
+        sig   = es.get("signal", {})
+        trade = es.get("trade_structure", {})
+        sizing = es.get("sizing", {})
+        # Oggetto con nested keys + flat keys per la dashboard
+        out = {
+            "index":          es.get("index", 0),
+            "signal":         sig,
+            "trade_structure": trade,
+            "sizing":         sizing,
+            # Flat fields letti da Dashboard.jsx / SignalPreview
+            **sig,
+            "position_size_eur":    sizing.get("position_size_eur", 0),
+            "kelly_quality":        sizing.get("kelly_quality", "–"),
+            "instruments":          trade.get("instruments", []),
+            "trade_type":           trade.get("trade_type", "–"),
+            "conviction_pct":       trade.get("conviction_pct"),
+            "stop_loss_pct":        trade.get("stop_loss_pct"),
+            "target_pct":           trade.get("target_pct"),
+            "primary_thesis":       trade.get("primary_thesis", ""),
+            "hedge_suggestion":     trade.get("hedge_suggestion", ""),
+            "alternative_scenario": trade.get("alternative_scenario", ""),
+        }
+        enriched_out.append(out)
     return {
-        "count": len(_latest_signals),
+        "count": len(enriched_out),
         "source": "memory",
-        "signals": _latest_signals,
+        "signals": enriched_out,
     }
 
 
