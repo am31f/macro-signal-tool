@@ -370,6 +370,20 @@ def close_position(
 
 # ─── Aggiornamento prezzi live ────────────────────────────────────────────────
 
+def _is_market_open() -> bool:
+    """Ritorna True se i mercati US sono probabilmente aperti (lun-ven 9:30-16:00 ET)."""
+    from datetime import datetime, timezone, timedelta
+    now_utc = datetime.now(timezone.utc)
+    # ET = UTC-4 (EDT) o UTC-5 (EST) — usiamo UTC-4 come approssimazione
+    now_et = now_utc - timedelta(hours=4)
+    weekday = now_et.weekday()  # 0=lun, 6=dom
+    if weekday >= 5:  # sabato o domenica
+        return False
+    market_open = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
+    market_close = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
+    return market_open <= now_et <= market_close
+
+
 def update_prices(db_path: Path = DB_PATH) -> dict:
     """
     Aggiorna current_price e P&L non realizzato per tutte le posizioni aperte.
@@ -378,6 +392,11 @@ def update_prices(db_path: Path = DB_PATH) -> dict:
     """
     triggered = []
     updated = []
+
+    # Non triggerare stop/target nel weekend o fuori orario di mercato
+    market_open = _is_market_open()
+    if not market_open:
+        logger.info("update_prices: mercati chiusi — aggiorno prezzi senza check stop/target")
 
     with get_conn(db_path) as conn:
         positions = conn.execute(
@@ -413,18 +432,19 @@ def update_prices(db_path: Path = DB_PATH) -> dict:
             )
             updated.append(ticker)
 
-            # Check stop/target
-            stop_price = pos["stop_price"]
-            target_price = pos["target_price"]
+            # Check stop/target solo se mercati aperti
+            if market_open:
+                stop_price = pos["stop_price"]
+                target_price = pos["target_price"]
 
-            hit_stop = (direction == "LONG" and price <= stop_price) or \
-                       (direction == "SHORT" and price >= stop_price)
-            hit_target = (direction == "LONG" and price >= target_price) or \
-                         (direction == "SHORT" and price <= target_price)
+                hit_stop = (direction == "LONG" and price <= stop_price) or \
+                           (direction == "SHORT" and price >= stop_price)
+                hit_target = (direction == "LONG" and price >= target_price) or \
+                             (direction == "SHORT" and price <= target_price)
 
-            if hit_stop or hit_target:
-                reason = "stop_hit" if hit_stop else "target_hit"
-                triggered.append((pos["id"], ticker, reason, price))
+                if hit_stop or hit_target:
+                    reason = "stop_hit" if hit_stop else "target_hit"
+                    triggered.append((pos["id"], ticker, reason, price))
 
         # Snapshot NAV
         cash = _get_config(conn, "cash", 0.0)

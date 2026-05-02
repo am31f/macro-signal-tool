@@ -206,7 +206,7 @@ def execute_signal(
             direction=direction,
             size_eur=inst_size_eur,
             entry_price=entry_price,
-            stop_loss_pct=abs(stop_loss_pct),   # stop_loss_pct è negativo nel trade structure
+            stop_loss_pct=stop_loss_pct,   # negativo es. -8.0 → open_position calcola stop correttamente
             target_pct=target_pct,
             event_category=category,
             signal_id=signal_id,
