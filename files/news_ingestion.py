@@ -236,10 +236,28 @@ def save_cache(cache: dict[str, dict]):
         json.dump(trimmed, f, ensure_ascii=False, indent=2)
 
 
+def _check_db_integrity(db_path: Path) -> bool:
+    """Verifica integrità DB SQLite. Se corrotto, lo cancella. Ritorna True se OK."""
+    if not db_path.exists():
+        return True
+    try:
+        with sqlite3.connect(str(db_path), timeout=5) as _c:
+            result = _c.execute("PRAGMA integrity_check").fetchone()
+            return result and result[0] == "ok"
+    except Exception as e:
+        log.error(f"DB news corrotto ({e}), ricreo: {db_path}")
+        try:
+            db_path.unlink()
+        except Exception:
+            pass
+        return True
+
+
 def save_to_sqlite(items: list[NewsItem]):
     """Opzionale: salva in SQLite per query storiche."""
+    _check_db_integrity(DB_PATH)
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(str(DB_PATH))
         conn.execute("""
             CREATE TABLE IF NOT EXISTS news (
                 id TEXT PRIMARY KEY,
@@ -399,11 +417,10 @@ def mark_classified(news_id: str, result: dict, materiality_score: float):
 if __name__ == "__main__":
     import sys
 
-    # Argomento opzionale: --test (usa solo 2 feed veloci)
     test_mode = "--test" in sys.argv
 
     if test_mode:
-        log.info("Modalità test: solo Reuters + MarketWatch")
+        log.info("Modalita test: solo Reuters + MarketWatch")
         feeds_to_use = [f for f in RSS_FEEDS if "Reuters" in f["name"] or "MarketWatch" in f["name"]]
     else:
         feeds_to_use = RSS_FEEDS

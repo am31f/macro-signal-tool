@@ -104,8 +104,19 @@ class PortfolioState:
 # ─── DB init ──────────────────────────────────────────────────────────────────
 
 def init_db(db_path: Path = DB_PATH):
-    """Crea le tabelle se non esistono."""
-    with sqlite3.connect(db_path) as conn:
+    """Crea le tabelle se non esistono. Se il DB è corrotto, lo ricrea da zero."""
+    import logging as _log
+    # Verifica integrità DB prima di aprirlo
+    if db_path.exists():
+        try:
+            with sqlite3.connect(str(db_path), timeout=5) as _test:
+                _test.execute("PRAGMA integrity_check").fetchone()
+        except Exception as e:
+            _log.getLogger("portfolio_manager").error(
+                f"DB corrotto ({e}), ricreo da zero: {db_path}"
+            )
+            db_path.unlink(missing_ok=True)
+    with sqlite3.connect(str(db_path)) as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS positions (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
