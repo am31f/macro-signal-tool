@@ -757,14 +757,15 @@ async def execute_trade(request: ExecuteRequest):
 @app.post("/portfolio/reset", summary="Azzera portafoglio paper trading (NAV → 10000)")
 async def reset_portfolio():
     """Cancella tutte le posizioni e reimposta il NAV a €10.000. Usare solo per reset test."""
-    import sqlite3 as _sq
     try:
-        with _sq.connect(str(DB_PATH)) as conn:
+        # Assicura che il DB esista con tutte le tabelle
+        init_portfolio_db()
+        from portfolio_manager import get_conn
+        with get_conn(DB_PATH) as conn:
             conn.execute("DELETE FROM positions")
             conn.execute("DELETE FROM nav_history")
             conn.execute("UPDATE config SET value=? WHERE key='cash'", (str(10000.0),))
             conn.execute("UPDATE config SET value=? WHERE key='realized_pnl'", ("0.0",))
-            conn.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('cash', '10000.0')")
             conn.commit()
         logger.info("Portfolio reset: NAV → €10.000, tutte le posizioni cancellate")
         return {"status": "ok", "message": "Portafoglio azzerato. NAV = €10.000", "nav": 10000.0}
