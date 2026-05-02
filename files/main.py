@@ -253,6 +253,54 @@ async def get_unclassified_news(limit: int = 10):
     return {"count": len(news), "news": news}
 
 
+@app.post("/news/classify", summary="Classifica news non classificate (manuale)")
+async def classify_news_manual(background_tasks: BackgroundTasks, limit: int = 50):
+    """
+    Lancia la classificazione Haiku+Sonnet su tutte le news non ancora classificate.
+    Utile dopo POST /news/reload-cache per classificare le news già in DB.
+    """
+    def _classify_only():
+        classified = run_classification_batch(limit=limit)
+        logger.info(f"Classificazione manuale completata: {len(classified)} news")
+        return classified
+    background_tasks.add_task(_classify_only)
+    return {
+        "status": "started",
+        "message": f"Classificazione avviata in background (limit={limit})",
+        "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+    }
+
+
+@app.get("/news/debug", summary="Stato DB news (conteggi per stato classificazione)")
+async def news_debug():
+    """Mostra quante news ci sono nel DB e quante sono classificate vs non."""
+    import sqlite3 as _sq
+    db_path = NEWS_DB_PATH
+    if not db_path.exists():
+        return {"error": "DB non trovato", "db_path": str(db_path)}
+    conn = _sq.connect(str(db_path))
+    try:
+        total = conn.execute("SELECT COUNT(*) FROM news").fetchone()[0]
+        classified_count = conn.execute("SELECT COUNT(*) FROM news WHERE classified=1").fetchone()[0]
+        unclassified_count = conn.execute("SELECT COUNT(*) FROM news WHERE classified=0").fetchone()[0]
+        latest = conn.execute(
+            "SELECT headline, source, timestamp_utc, classified, materiality_score FROM news ORDER BY timestamp_unix DESC LIMIT 10"
+        ).fetchall()
+        return {
+            "db_path": str(db_path),
+            "total_news": total,
+            "classified": classified_count,
+            "unclassified": unclassified_count,
+            "latest_10": [
+                {"headline": r[0][:80], "source": r[1], "date": r[2][:10],
+                 "classified": bool(r[3]), "materiality": r[4]}
+                for r in latest
+            ]
+        }
+    finally:
+        conn.close()
+
+
 @app.get("/signals/run", summary="Esegui pipeline segnali su news recenti")
 async def run_signals(limit: int = 30):
     """
@@ -391,6 +439,7 @@ async def run_signals(limit: int = 30):
             }
             for r in pipeline_output.get("reject_log", [])[:5]
         ],
+        "reject_log_full": pipeline_output.get("reject_log", []),
     }
 
 
@@ -463,6 +512,30 @@ async def close_trade_manual(request: ManualCloseRequest):
         asyncio.ensure_future(_telegram.send_trade_closed(result, close_reason=request.reason))
 
     return {"status": "closed", "result": result}
+
+
+@app.get("/news/search", summary="Cerca news per keyword nel DB")
+async def search_news(q: str, limit: int = 50):
+    """Cerca news classificate contenenti la keyword q nel titolo o contenuto."""
+    import sqlite3
+    db_path = NEWS_DB_PATH
+    if not db_path.exists():
+        return {"count": 0, "results": [], "error": "DB non trovato"}
+    q_lower = q.lower()
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            "SELECT * FROM news WHERE LOWER(headline) LIKE ? OR LOWER(content) LIKE ? ORDER BY published_at DESC LIMIT ?",
+            (f"%{q_lower}%", f"%{q_lower}%", limit)
+        ).fetchall()
+        return {
+            "count": len(rows),
+            "query": q,
+            "results": [dict(r) for r in rows],
+        }
+    finally:
+        conn.close()
 
 
 @app.get("/portfolio", summary="Stato portafoglio completo")

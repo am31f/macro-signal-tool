@@ -89,6 +89,27 @@ RSS_FEEDS = [
         "language": "en",
         "priority": 1
     },
+    {
+        "name": "TGCom24 Economia",
+        "url": "https://www.tgcom24.mediaset.it/rss/economia.xml",
+        "category": "economy_it",
+        "language": "it",
+        "priority": 2
+    },
+    {
+        "name": "Corriere della Sera Economia",
+        "url": "https://xml2.corriereobjects.it/rss/economia.xml",
+        "category": "economy_it",
+        "language": "it",
+        "priority": 2
+    },
+    {
+        "name": "Repubblica Economia",
+        "url": "https://www.repubblica.it/rss/economia/rss2.0.xml",
+        "category": "economy_it",
+        "language": "it",
+        "priority": 2
+    },
 ]
 
 # ─── Struttura standardizzata ─────────────────────────────────────────────────
