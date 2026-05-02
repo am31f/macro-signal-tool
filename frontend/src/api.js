@@ -3,7 +3,7 @@
  * Tutti i fetch passano per il proxy Vite (/api → :8000)
  */
 
-const BASE = '/api'
+const BASE = import.meta.env.VITE_API_BASE || '/api'
 
 async function fetchJSON(path, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
