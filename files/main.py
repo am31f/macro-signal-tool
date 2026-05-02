@@ -109,9 +109,14 @@ app.add_middleware(
 async def startup_event():
     """Inizializza DB e scheduler al bootstrap."""
     logger.info("MacroSignalTool avvio...")
-    # news_ingestion crea la tabella news al primo save_to_sqlite — nessun init separato
-    init_portfolio_db()
-    logger.info("DB inizializzati ✅")
+    logger.info(f"DATA_DIR={DATA_DIR}, exists={DATA_DIR.exists()}")
+
+    # Inizializza DB portfolio (con fallback se il volume non è montato)
+    try:
+        init_portfolio_db()
+        logger.info("DB inizializzati ✅")
+    except Exception as e:
+        logger.error(f"Errore init DB: {e} — continuo comunque")
 
     # Avvia scheduler APScheduler (se disponibile)
     try:
@@ -147,6 +152,8 @@ async def startup_event():
         logger.info("APScheduler avviato: news ogni 4h, prezzi ogni 15min ✅")
     except ImportError:
         logger.warning("APScheduler non installato — polling automatico disabilitato")
+    except Exception as e:
+        logger.error(f"Errore avvio scheduler: {e} — continuo comunque")
 
 
 async def _scheduled_news_fetch():
@@ -669,9 +676,10 @@ async def close_trade_manual(request: ManualCloseRequest):
     return {"status": "closed", "result": result}
 
 
+
 @app.get("/news/search", summary="Cerca news per keyword nel DB")
 async def search_news(q: str, limit: int = 50):
-    """Cerca news classificate contenenti la keyword q nel titolo o contenuto."""
+    """Cerca news contenenti la keyword nel titolo o snippet."""
     import sqlite3
     db_path = NEWS_DB_PATH
     if not db_path.exists():
@@ -719,8 +727,6 @@ async def get_performance():
 async def get_trade_journal(limit: int = 20):
     journal = get_journal(limit)
     return {"count": len(journal), "entries": journal}
-
-
 
 
 if __name__ == "__main__":
