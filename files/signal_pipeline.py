@@ -567,21 +567,3 @@ def _run_test():
             print(f"     Motivo: {r['reject_reason']}")
 
     print("\n✅ Test completato.")
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Signal Pipeline — MacroSignalTool")
-    parser.add_argument("--test", action="store_true", help="Esegui test con 3 news di esempio")
-    parser.add_argument("--input", type=str, help="Path a JSON file con lista di news classificate")
-    args = parser.parse_args()
-
-    if args.test:
-        _run_test()
-    elif args.input:
-        with open(args.input, "r", encoding="utf-8") as f:
-            news_list = json.load(f)
-        output = process_classified_news(news_list)
-        print(json.dumps(output, indent=2, ensure_ascii=False))
-    else:
-        parser.print_help()
-            print(f"     Motivo: {r['reject_reason'][:80]}")
