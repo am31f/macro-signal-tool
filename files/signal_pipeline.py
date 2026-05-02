@@ -10,7 +10,10 @@ Output: signal_candidates[] se tutti i filtri passano,
 Filtri in sequenza:
   F1 — Materiality: materiality_score >= soglia per categoria
   F2 — Novelty: novelty_score >= 0.4 (non già prezzato)
-  F3 — Cross-asset confirmation: almeno 4/5 asset macro si muovono >= 1.5σ
+  F3 — Cross-asset confirmation: moltiplicatore istituzionale del sizing
+         STRONG (>=3/5 asset) → size 1.0x | MODERATE (1-2/5) → 0.5x
+         WEAK (0/5, no contrarian) → 0.25x | CONTRARIAN → REJECT
+         MARKET_CLOSED (weekend/dati vecchi) → 0.5x precauzionale
   F4 — Entry timing: non aprire posizioni se entry_timing == T+0
   F5 — Macro regime coherence: verifica coerenza macro_regime con categoria
 
@@ -29,7 +32,7 @@ from typing import Optional
 # Import dei moduli locali
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
-from cross_asset_validator import run_validation
+from cross_asset_validator import run_validation, STRONG_THRESHOLD
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -84,6 +87,7 @@ class FilterResult:
     score: Optional[float]
     threshold: Optional[float]
     reason: str
+    size_multiplier: Optional[float] = None  # usato da F3: moltiplicatore size (1.0/0.5/0.25/0.0)
 
 
 @dataclass
@@ -105,6 +109,7 @@ class SignalCandidate:
     filters_passed: list
     signal_generated_at: str
     confidence_composite: float       # media pesata dei punteggi chiave
+    cross_asset_size_multiplier: float = 1.0  # da CrossAssetResult.size_multiplier (scala la size)
 
 
 @dataclass
@@ -170,27 +175,75 @@ def filter_2_novelty(news: dict) -> FilterResult:
 
 def filter_3_cross_asset(news: dict) -> tuple[FilterResult, dict]:
     """
-    F3: almeno 4/5 asset macro si muovono >= 1.5σ in direzione coerente.
-    Esegue run_validation() da cross_asset_validator.py.
+    F3: cross-asset confirmation con logica istituzionale (Bridgewater/Brevan Howard).
+
+    Non più hard-reject su conferma insufficiente. Il cross-asset è un moltiplicatore
+    del sizing, non un cancello on/off. Hard-reject SOLO se confirmation_level == "CONTRARIAN"
+    (la maggioranza degli asset va in direzione OPPOSTA alla tesi — segnale genuinamente errato).
+
+    Livelli:
+      STRONG      >= 3/5 confermano → size_multiplier 1.0 — PASS
+      MODERATE    1-2/5 confermano  → size_multiplier 0.5 — PASS (size ridotta al 50%)
+      WEAK        0/5 confermano, nessun contrarian → size_multiplier 0.25 — PASS (size minima 25%)
+      CONTRARIAN  maggioranza assets contro la tesi → size_multiplier 0.0 — REJECT
+      MARKET_CLOSED weekend/dati vecchi → size_multiplier 0.5 — PASS (cautela)
+
     Restituisce (FilterResult, cross_asset_result_dict).
     """
     category = news.get("event_category", "NONE")
     try:
         cross_result = run_validation(category)
         score = cross_result["confirmation_score"]
-        passes = cross_result["passes_filter"]
-        confirming = ", ".join(cross_result["confirming_assets"]) or "nessuno"
-        reason = (
-            f"{score}/5 asset confermano (>= 4 richiesti). Asset: {confirming}"
-            if passes
-            else f"Solo {score}/5 asset confermano — {cross_result.get('warning', '')}"
+        confirmation_level = cross_result.get("confirmation_level", "WEAK")
+        size_multiplier = cross_result.get("size_multiplier", 0.25)
+        passes = cross_result["passes_filter"]  # False SOLO per CONTRARIAN
+        confirming = ", ".join(cross_result.get("confirming_assets", [])) or "nessuno"
+        contrarian = ", ".join(cross_result.get("contrarian_assets", [])) or "nessuno"
+
+        if confirmation_level == "CONTRARIAN":
+            reason = (
+                f"CONTRARIAN — la maggioranza degli asset va in direzione opposta alla tesi. "
+                f"Asset contrarian: {contrarian}. Segnale scartato."
+            )
+        elif confirmation_level == "STRONG":
+            reason = (
+                f"STRONG — {score}/5 asset confermano, size normale (1.0x). "
+                f"Asset confermanti: {confirming}"
+            )
+        elif confirmation_level == "MODERATE":
+            reason = (
+                f"MODERATE — {score}/5 asset confermano, size ridotta al 50% (0.5x). "
+                f"Asset confermanti: {confirming}"
+            )
+        elif confirmation_level == "WEAK":
+            reason = (
+                f"WEAK — 0/5 asset confermano con z-score significativo, nessuna pressione contrarian. "
+                f"Size minima (0.25x) — tesi intatta, conferma macro assente."
+            )
+        elif confirmation_level == "MARKET_CLOSED":
+            reason = (
+                f"MARKET_CLOSED — mercati chiusi o dati yfinance non aggiornati. "
+                f"Size ridotta precauzionalmente (0.5x). {cross_result.get('warning', '')}"
+            )
+        else:
+            reason = f"{confirmation_level} — {score}/5 asset confermano. size_multiplier={size_multiplier}"
+
+        return (
+            FilterResult(
+                "F3", "Cross-Asset Confirmation",
+                passes, float(score), float(STRONG_THRESHOLD),
+                reason, size_multiplier
+            ),
+            cross_result,
         )
-        return FilterResult("F3", "Cross-Asset Confirmation", passes, float(score), 4.0, reason), cross_result
     except Exception as e:
         logger.error(f"Errore cross_asset_validator: {e}")
-        # In caso di errore del validator, degradiamo gracefully con warning ma non blocchiamo
-        reason = f"cross_asset_validator non disponibile ({e}) — filtro degradato, PASS con warning"
-        return FilterResult("F3", "Cross-Asset Confirmation", True, 0.0, 4.0, reason), {}
+        # In caso di errore del validator, degradiamo gracefully: PASS con size ridotta
+        reason = (
+            f"cross_asset_validator non disponibile ({e}) — filtro degradato, "
+            f"PASS con size_multiplier=0.25 (WEAK per default)"
+        )
+        return FilterResult("F3", "Cross-Asset Confirmation", True, 0.0, float(STRONG_THRESHOLD), reason, 0.25), {}
 
 
 def filter_4_entry_timing(news: dict) -> FilterResult:
@@ -252,12 +305,24 @@ def compute_composite_confidence(news: dict, cross_result: dict) -> float:
     Calcola un confidence_composite (0-1) come media pesata di:
     - materiality_score (peso 0.35)
     - novelty_score (peso 0.25)
-    - cross_asset_confirmation_score normalizzato /5 (peso 0.30)
+    - cross_asset_confirmation_score normalizzato /5 * size_multiplier (peso 0.30)
     - entry_timing_bonus (peso 0.10): T+1 → 1.0, T+3 → 0.7, WAIT → 0.3
+
+    Il size_multiplier dal CrossAssetResult scala il contributo cross-asset:
+      - STRONG (1.0):       cross contribuisce fino a 0.30 della confidence
+      - MODERATE (0.5):     cross contribuisce fino a 0.15
+      - WEAK (0.25):        cross contribuisce fino a 0.075
+      - MARKET_CLOSED (0.5): trattato come MODERATE
+    Questo riflette automaticamente la certezza del segnale nel punteggio finale.
     """
     materiality = float(news.get("materiality_score", 0.0))
     novelty = float(news.get("novelty_score", 0.0))
-    cross_score = float(cross_result.get("confirmation_score", 0)) / 5.0
+
+    # Estrai size_multiplier dal cross_result (default 1.0 se non presente)
+    size_multiplier = float(cross_result.get("size_multiplier", 1.0))
+    raw_cross_score = float(cross_result.get("confirmation_score", 0)) / 5.0
+    # Scala il contributo cross-asset per il size_multiplier
+    cross_score = raw_cross_score * size_multiplier
 
     timing = str(news.get("entry_timing", "WAIT")).upper()
     if "T+1" in timing or "T1" in timing:
@@ -362,6 +427,8 @@ def run_pipeline(classified_news_list: list[dict]) -> PipelineOutput:
 
         # ── TUTTI I FILTRI PASSATI → genera segnale ────────────────────────────
         composite = compute_composite_confidence(news, cross_result)
+        # Recupera size_multiplier dal cross_result (default 1.0 se non disponibile)
+        cross_size_multiplier = float(cross_result.get("size_multiplier", 1.0))
         signal = SignalCandidate(
             news_id=news_id,
             headline=headline,
@@ -379,9 +446,14 @@ def run_pipeline(classified_news_list: list[dict]) -> PipelineOutput:
             filters_passed=filters_run,
             signal_generated_at=timestamp,
             confidence_composite=composite,
+            cross_asset_size_multiplier=cross_size_multiplier,
         )
         signal_candidates.append(asdict(signal))
-        logger.info(f"  🚀 SEGNALE GENERATO — composite_confidence={composite:.3f}")
+        logger.info(
+            f"  SEGNALE GENERATO — composite_confidence={composite:.3f} "
+            f"| cross_level={cross_result.get('confirmation_level', 'N/A')} "
+            f"| size_multiplier={cross_size_multiplier:.2f}x"
+        )
 
     output = PipelineOutput(
         run_timestamp=timestamp,

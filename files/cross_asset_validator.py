@@ -7,6 +7,13 @@ via yfinance e calcola z-score vs rolling 60 giorni.
 Restituisce un cross_asset_confirmation_score: quanti dei 5 asset si stanno
 muovendo >= 1.5σ in direzione coerente con la categoria evento classificata.
 
+Livelli di conferma (logica istituzionale Bridgewater/Brevan Howard):
+  STRONG      >= 3/5 asset confermano in direzione coerente → size_multiplier 1.0
+  MODERATE    1-2/5 asset confermano                        → size_multiplier 0.5
+  WEAK        0/5 confermano MA nessuno contrarian (flat)   → size_multiplier 0.25
+  CONTRARIAN  maggioranza asset in direzione OPPOSTA        → size_multiplier 0.0 (scarta)
+  MARKET_CLOSED  mercati chiusi/dati vecchi >1 giorno       → size_multiplier 0.5
+
 Dipendenze: pip install yfinance pandas
 Testabile: python cross_asset_validator.py --test
 """
@@ -33,7 +40,20 @@ logger = logging.getLogger("cross_asset_validator")
 
 ROLLING_DAYS = 60          # finestra per calcolo media/std
 SIGMA_THRESHOLD = 1.5      # soglia z-score per "movimento significativo"
-MIN_CONFIRMING = 4         # almeno 4 di 5 asset devono confermare
+MIN_CONFIRMING = 4         # soglia originale (mantenuta per compatibilità, non più usata nel filtro)
+
+# Soglie livelli di conferma (logica istituzionale)
+STRONG_THRESHOLD = 3       # >= 3/5 asset confermano → STRONG
+MARKET_CLOSED_LAG_DAYS = 2 # se l'ultimo dato yfinance è vecchio di >= N giorni → MARKET_CLOSED
+
+# Size multiplier per livello di conferma
+SIZE_MULTIPLIERS = {
+    "STRONG":       1.0,
+    "MODERATE":     0.5,
+    "WEAK":         0.25,
+    "CONTRARIAN":   0.0,
+    "MARKET_CLOSED": 0.5,
+}
 
 # Mappa dei 5 asset macro con simbolo yfinance e direzione attesa per categoria
 MACRO_ASSETS = {
@@ -165,7 +185,10 @@ class CrossAssetResult:
     confirmation_score: int             # 0-5: quanti asset confermano
     confirming_assets: list             # nomi degli asset che confermano
     non_confirming_assets: list
-    passes_filter: bool                 # True se confirmation_score >= MIN_CONFIRMING
+    contrarian_assets: list             # asset che vanno in direzione OPPOSTA con z >= soglia
+    passes_filter: bool                 # True eccetto CONTRARIAN — quasi sempre True
+    confirmation_level: str             # "STRONG" / "MODERATE" / "WEAK" / "CONTRARIAN" / "MARKET_CLOSED"
+    size_multiplier: float              # 1.0 / 0.5 / 0.25 / 0.0
     sigma_threshold_used: float
     min_confirming_required: int
     asset_readings: list                # lista di AssetReading serializzati
@@ -174,6 +197,27 @@ class CrossAssetResult:
 
 
 # ─── Fetching prezzi ─────────────────────────────────────────────────────────
+
+def is_market_likely_closed() -> tuple[bool, str]:
+    """
+    Rileva se i mercati sono probabilmente chiusi.
+    Restituisce (is_closed: bool, reason: str).
+    Controlla:
+      - giorno della settimana (sabato=5, domenica=6)
+    La verifica sul lag dell'ultimo dato yfinance viene fatta in validate_cross_asset
+    dopo il fetch, confrontando la data dell'ultimo close con oggi.
+    """
+    today = datetime.now(tz=timezone.utc)
+    if today.weekday() >= 5:
+        day_name = "sabato" if today.weekday() == 5 else "domenica"
+        next_monday = today + timedelta(days=(7 - today.weekday()))
+        return True, (
+            f"Oggi è {day_name} — mercati chiusi. "
+            f"Segnale tracciato per apertura lunedì {next_monday.strftime('%d/%m/%Y')}. "
+            f"Conferma cross-asset non disponibile, size ridotta precauzionalmente."
+        )
+    return False, ""
+
 
 def fetch_price_series(symbol: str, days: int = ROLLING_DAYS + 5) -> Optional[pd.Series]:
     """
@@ -244,12 +288,26 @@ def validate_cross_asset(event_category: str) -> CrossAssetResult:
     """
     Funzione principale: per una data categoria evento, scarica i 5 asset macro,
     calcola gli z-score e restituisce il CrossAssetResult completo.
+
+    Logica di conferma (istituzionale):
+      STRONG      >= 3/5 asset confermano in direzione coerente → size_multiplier 1.0
+      MODERATE    1-2/5 asset confermano                        → size_multiplier 0.5
+      WEAK        0/5 confermano, nessuno contrarian            → size_multiplier 0.25
+      CONTRARIAN  la maggioranza (>= 3) degli asset van contro  → size_multiplier 0.0
+      MARKET_CLOSED  weekend o dati yfinance vecchi > 1 giorno  → size_multiplier 0.5
+
+    passes_filter è False SOLO per CONTRARIAN.
     """
     timestamp = datetime.now(tz=timezone.utc).isoformat()
     confirming = []
     non_confirming = []
+    contrarian_assets = []
     asset_readings = []
     brent_direction = None  # per macro_regime_hint
+    last_data_dates = []    # per rilevare lag dati yfinance
+
+    # ── Verifica weekend anticipata ────────────────────────────────────────────
+    market_closed, market_closed_reason = is_market_likely_closed()
 
     for asset_key, asset_info in MACRO_ASSETS.items():
         symbol = asset_info["symbol"]
@@ -276,6 +334,13 @@ def validate_cross_asset(event_category: str) -> CrossAssetResult:
             asset_readings.append(asdict(reading))
             continue
 
+        # Traccia la data dell'ultimo dato per rilevare lag
+        last_idx = series.index[-1]
+        if hasattr(last_idx, 'date'):
+            last_data_dates.append(last_idx.date())
+        elif hasattr(last_idx, 'to_pydatetime'):
+            last_data_dates.append(last_idx.to_pydatetime().date())
+
         pct_change_1d, rolling_mean, rolling_std, zscore = compute_zscore(series)
 
         # Direzione attuale
@@ -293,14 +358,23 @@ def validate_cross_asset(event_category: str) -> CrossAssetResult:
             expected_direction == "neutral"  # neutral accetta qualsiasi mossa significativa
             or actual_direction == expected_direction
         )
+        # Contrarian: zscore significativo MA nella direzione OPPOSTA
+        opposite_direction = (
+            expected_direction != "neutral"
+            and actual_direction != "flat"
+            and actual_direction != expected_direction
+        )
         is_confirming = abs(zscore) >= SIGMA_THRESHOLD and direction_match
+        is_contrarian = abs(zscore) >= SIGMA_THRESHOLD and opposite_direction
 
         # Nota
         note = ""
         if expected_direction == "neutral":
             note = "Asset neutro per questa categoria — movimento qualsiasi conta"
+        elif is_contrarian:
+            note = f"CONTRARIAN — direzione attesa {expected_direction}, osservata {actual_direction} con z={zscore:.2f}"
         elif not direction_match:
-            note = f"Direzione attesa {expected_direction}, osservata {actual_direction} — contrarian"
+            note = f"Direzione attesa {expected_direction}, osservata {actual_direction} — movimento non opposto (flat o neutro)"
         elif abs(zscore) < SIGMA_THRESHOLD:
             note = f"Zscore {zscore:.2f} < soglia {SIGMA_THRESHOLD} — movimento non significativo"
 
@@ -325,15 +399,49 @@ def validate_cross_asset(event_category: str) -> CrossAssetResult:
         else:
             non_confirming.append(asset_key)
 
+        if is_contrarian:
+            contrarian_assets.append(asset_key)
+
         asset_readings.append(asdict(reading))
 
         if asset_key == "BRENT":
             brent_direction = actual_direction
 
     confirmation_score = len(confirming)
-    passes_filter = confirmation_score >= MIN_CONFIRMING
+    contrarian_count = len(contrarian_assets)
 
-    # Macro regime hint
+    # ── Rileva lag dati yfinance (mercati chiusi infrasettimanale: festività ecc.) ──
+    if not market_closed and last_data_dates:
+        today_date = datetime.now(tz=timezone.utc).date()
+        most_recent_data = max(last_data_dates)
+        lag_days = (today_date - most_recent_data).days
+        if lag_days >= MARKET_CLOSED_LAG_DAYS:
+            market_closed = True
+            market_closed_reason = (
+                f"Dati yfinance fermi al {most_recent_data} ({lag_days} giorni fa) — "
+                f"mercati probabilmente chiusi (festività o weekend). "
+                f"Segnale tracciato per prossima apertura. "
+                f"Conferma cross-asset non disponibile, size ridotta precauzionalmente."
+            )
+
+    # ── Determina il livello di conferma ──────────────────────────────────────
+    if market_closed:
+        confirmation_level = "MARKET_CLOSED"
+    elif contrarian_count >= 3:
+        # Maggioranza degli asset va in direzione opposta → segnale contrarian
+        confirmation_level = "CONTRARIAN"
+    elif confirmation_score >= STRONG_THRESHOLD:
+        confirmation_level = "STRONG"
+    elif confirmation_score >= 1:
+        confirmation_level = "MODERATE"
+    else:
+        # 0 confermano, ma non ci sono abbastanza contrarian → flat/incerto
+        confirmation_level = "WEAK"
+
+    size_multiplier = SIZE_MULTIPLIERS[confirmation_level]
+    passes_filter = confirmation_level != "CONTRARIAN"
+
+    # ── Macro regime hint ─────────────────────────────────────────────────────
     if event_category in ("ENERGY_SUPPLY_SHOCK", "MILITARY_CONFLICT", "SANCTIONS_IMPOSED"):
         if brent_direction == "up":
             macro_regime_hint = "inflationary_shock — Brent in rialzo, bonds potrebbero NON essere safe haven"
@@ -346,11 +454,26 @@ def validate_cross_asset(event_category: str) -> CrossAssetResult:
     else:
         macro_regime_hint = "mixed — regime non determinato automaticamente"
 
-    warning = ""
-    if confirmation_score == 0:
-        warning = "NESSUN asset conferma — evento probabilmente già prezzato o non macro-rilevante"
-    elif confirmation_score < MIN_CONFIRMING and confirmation_score >= 2:
-        warning = f"Solo {confirmation_score}/5 asset confermano — segnale debole, non aprire posizioni full size"
+    # ── Warning ───────────────────────────────────────────────────────────────
+    if market_closed:
+        warning = market_closed_reason
+    elif confirmation_level == "CONTRARIAN":
+        warning = (
+            f"CONTRARIAN SIGNAL — {contrarian_count}/5 asset si muovono in direzione OPPOSTA alla tesi. "
+            f"Segnale scartato. Asset contrarian: {', '.join(contrarian_assets)}"
+        )
+    elif confirmation_level == "STRONG":
+        warning = f"{confirmation_score}/5 asset confermano — conferma forte, size normale."
+    elif confirmation_level == "MODERATE":
+        warning = (
+            f"Solo {confirmation_score}/5 asset confermano — conferma moderata. "
+            f"Size ridotta al 50% (logica istituzionale: non si scarta, si scala)."
+        )
+    elif confirmation_level == "WEAK":
+        warning = (
+            f"Nessun asset conferma con sufficiente z-score, ma nessuna pressione contrarian rilevante. "
+            f"Segnale eseguito in size minima (25%) — tesi intatta, conferma macro assente."
+        )
 
     return CrossAssetResult(
         event_category=event_category,
@@ -358,7 +481,10 @@ def validate_cross_asset(event_category: str) -> CrossAssetResult:
         confirmation_score=confirmation_score,
         confirming_assets=confirming,
         non_confirming_assets=non_confirming,
+        contrarian_assets=contrarian_assets,
         passes_filter=passes_filter,
+        confirmation_level=confirmation_level,
+        size_multiplier=size_multiplier,
         sigma_threshold_used=SIGMA_THRESHOLD,
         min_confirming_required=MIN_CONFIRMING,
         asset_readings=asset_readings,
@@ -395,7 +521,9 @@ def _run_test():
     result = run_validation("ENERGY_SUPPLY_SHOCK")
 
     print(f"\n📊 Confirmation score: {result['confirmation_score']}/{len(MACRO_ASSETS)}")
-    print(f"✅ Passes filter (>= {MIN_CONFIRMING}): {result['passes_filter']}")
+    print(f"🎯 Confirmation level: {result['confirmation_level']}")
+    print(f"📐 Size multiplier: {result['size_multiplier']:.2f}x")
+    print(f"✅ Passes filter: {result['passes_filter']} (False solo per CONTRARIAN)")
     print(f"🌍 Macro regime hint: {result['macro_regime_hint']}")
 
     if result["warning"]:
