@@ -758,13 +758,13 @@ async def execute_trade(request: ExecuteRequest):
 async def reset_portfolio():
     """Cancella tutte le posizioni e reimposta il NAV a €10.000. Usare solo per reset test."""
     try:
-        # Assicura che il DB esista con tutte le tabelle
-        init_portfolio_db()
-        from portfolio_manager import get_conn
-        with get_conn(DB_PATH) as conn:
+        import sqlite3 as _sq
+        # DB_PATH è il path usato da portfolio_manager (su Railway: /data/paper_trading.db)
+        db_path_str = str(DB_PATH)
+        with _sq.connect(db_path_str) as conn:
             conn.execute("DELETE FROM positions")
             conn.execute("DELETE FROM nav_history")
-            conn.execute("UPDATE config SET value=? WHERE key='cash'", (str(10000.0),))
+            conn.execute("UPDATE config SET value=? WHERE key='cash'", ("10000.0",))
             conn.execute("UPDATE config SET value=? WHERE key='realized_pnl'", ("0.0",))
             conn.commit()
         logger.info("Portfolio reset: NAV → €10.000, tutte le posizioni cancellate")
