@@ -495,8 +495,12 @@ async def run_signals(limit: int = 30):
             "sizing": sizing,
         })
 
-    _latest_signals = enriched_signals
-    _latest_pipeline_output = pipeline_output
+    # Aggiorna cache solo se abbiamo trovato segnali (non sovrascrivere run buone con 0)
+    if enriched_signals:
+        _latest_signals = enriched_signals
+        _latest_pipeline_output = pipeline_output
+    else:
+        logger.info(f"run_signals: 0 segnali da questa run (limit={limit}), cache precedente mantenuta")
 
     # Phase 6.1: Telegram alert per segnali con confidence alta
     if _telegram and enriched_signals:
@@ -577,10 +581,29 @@ async def pipeline_status():
 
 @app.get("/signals/latest", summary="Ultimi segnali in cache")
 async def get_latest_signals():
+    global _latest_signals
+    # Se la cache in memoria è vuota, prova a caricarla dal disco (sopravvive ai restart)
     if not _latest_signals:
-        return {"status": "EMPTY", "message": "Nessun segnale in cache. Chiama GET /signals/run."}
+        cache_path = DATA_DIR / "signals_cache.json"
+        if cache_path.exists():
+            try:
+                cached = json.loads(cache_path.read_text())
+                disk_signals = cached.get("signals", [])
+                if disk_signals:
+                    logger.info(f"Caricati {len(disk_signals)} segnali da disco (signals_cache.json)")
+                    # Restituisce il formato flat salvato su disco
+                    return {
+                        "count": len(disk_signals),
+                        "source": "disk_cache",
+                        "timestamp": cached.get("timestamp"),
+                        "signals": disk_signals,
+                    }
+            except Exception as e:
+                logger.warning(f"Errore lettura signals_cache.json: {e}")
+        return {"status": "EMPTY", "message": "Nessun segnale disponibile. Chiama /signals/run/async."}
     return {
         "count": len(_latest_signals),
+        "source": "memory",
         "signals": _latest_signals,
     }
 
