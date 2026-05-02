@@ -218,7 +218,7 @@ async def root():
     }
 
 
-@app.post("/news/fetch", summary="Fetch e classifica news (manuale)")
+@app.api_route("/news/fetch", methods=["GET", "POST"], summary="Fetch e classifica news (manuale)")
 async def fetch_news(background_tasks: BackgroundTasks):
     """
     Esegue fetch RSS + classificazione Claude in background.
@@ -253,7 +253,7 @@ async def get_unclassified_news(limit: int = 10):
     return {"count": len(news), "news": news}
 
 
-@app.post("/news/classify", summary="Classifica news non classificate (manuale)")
+@app.api_route("/news/classify", methods=["GET", "POST"], summary="Classifica news non classificate (manuale)")
 async def classify_news_manual(background_tasks: BackgroundTasks, limit: int = 50):
     """
     Lancia la classificazione Haiku+Sonnet su tutte le news non ancora classificate.
@@ -304,7 +304,7 @@ async def news_debug():
 _pipeline_running = False  # flag per sapere se la pipeline è in corso
 
 
-@app.post("/signals/run/async", summary="Lancia pipeline segnali in background (non bloccante)")
+@app.api_route("/signals/run/async", methods=["GET", "POST"], summary="Lancia pipeline segnali in background (non bloccante)")
 async def run_signals_async(background_tasks: BackgroundTasks, limit: int = 50):
     """Versione non bloccante di /signals/run. Ritorna subito, la pipeline gira in background."""
     global _pipeline_running
@@ -699,8 +699,9 @@ async def get_trade_journal(limit: int = 20):
 
 
 
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
-    logger.info(f"Avvio MacroSignalTool API su http://localhost:{port}")
+    logger.info(f"Avvio MacroSignalTool API su porta {port}")
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
