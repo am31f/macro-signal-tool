@@ -78,7 +78,7 @@ try:
     from instagram_content_generator import generate_carousel_content
     from slide_renderer import render_carousel_slides
     from instagram_publisher import publish_carousel
-    from comment_handler import process_recent_comments
+    from comment_handler import process_all_recent_posts as process_recent_comments
 
     def pick_top_signal(cache_path: str) -> Optional[dict]:
         """Seleziona il segnale con confidence più alta dalla cache."""
