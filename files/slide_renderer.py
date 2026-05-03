@@ -314,24 +314,30 @@ def render_carousel_slides(content_dict: dict, output_dir: Path = None) -> list:
     Returns:
         lista di Path ai file PNG generati
     """
-    # ── Fallback Pillow se Playwright non è disponibile ───────────────────────
-    try:
-        from playwright.sync_api import sync_playwright as _sync_playwright
-        _playwright_ok = True
-    except ImportError:
-        _playwright_ok = False
-
-    if not _playwright_ok:
-        logger.info("Playwright non disponibile → uso renderer Pillow")
+    # ── Helper fallback Pillow ────────────────────────────────────────────────
+    def _use_pillow_fallback(reason: str) -> list:
+        logger.info(f"Pillow fallback: {reason}")
         try:
             from slide_renderer_pillow import render_carousel_slides_pillow
             out = output_dir if output_dir is not None else SLIDES_DIR
+            out = Path(out)
+            out.mkdir(parents=True, exist_ok=True)
             return render_carousel_slides_pillow(content_dict, out)
         except Exception as e:
-            logger.error(f"Anche Pillow renderer fallito: {e}")
+            logger.error(f"Pillow renderer fallito: {e}", exc_info=True)
             return []
 
-    # Controlla se Chromium di sistema è disponibile
+    # ── Shortcut: forza Pillow via variabile d'ambiente ───────────────────────
+    if os.environ.get("PILLOW_RENDERER", "").strip() in ("1", "true", "yes"):
+        return _use_pillow_fallback("PILLOW_RENDERER=1 impostato (Railway/fallback forzato)")
+
+    # ── Controlla se Playwright + Chromium sono disponibili ──────────────────
+    try:
+        from playwright.sync_api import sync_playwright as _sync_playwright
+    except ImportError:
+        return _use_pillow_fallback("playwright non installato")
+
+    # Playwright è installato — verifica che Chromium sia effettivamente disponibile
     _chromium_candidates = [
         os.environ.get("CHROMIUM_PATH", ""),
         "/usr/bin/chromium",
@@ -340,19 +346,29 @@ def render_carousel_slides(content_dict: dict, output_dir: Path = None) -> list:
         "/run/current-system/sw/bin/chromium",
     ]
     _chromium_exe = next((p for p in _chromium_candidates if p and Path(p).exists()), None)
+
+    # Controlla se playwright ha un browser scaricato (via PLAYWRIGHT_BROWSERS_PATH)
+    _browsers_path = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "")
+    _has_playwright_browser = bool(_browsers_path and Path(_browsers_path).exists())
+
+    if not _chromium_exe and not _has_playwright_browser:
+        # Testa se riesce a trovare il browser Playwright installato
+        try:
+            import subprocess as _sp
+            _result = _sp.run(
+                ["python3", "-c",
+                 "from playwright.sync_api import sync_playwright; p=sync_playwright().start(); b=p.chromium.launch(args=['--no-sandbox']); b.close(); p.stop()"],
+                capture_output=True, timeout=15
+            )
+            if _result.returncode != 0:
+                return _use_pillow_fallback(f"Chromium non disponibile su questo sistema (exit {_result.returncode})")
+        except Exception:
+            return _use_pillow_fallback("Chromium test fallito")
+
     _launch_kwargs: dict = {"args": ["--no-sandbox", "--disable-dev-shm-usage"]}
     if _chromium_exe:
         _launch_kwargs["executable_path"] = _chromium_exe
-
-    # Prova a lanciare Playwright — se fallisce usa Pillow
-    try:
-        import subprocess
-        test = subprocess.run(
-            ["playwright", "install", "--dry-run", "chromium"],
-            capture_output=True, timeout=5
-        )
-    except Exception:
-        pass
+        logger.info(f"Uso Chromium di sistema: {_chromium_exe}")
 
     if output_dir is None:
         output_dir = SLIDES_DIR
@@ -373,39 +389,27 @@ def render_carousel_slides(content_dict: dict, output_dir: Path = None) -> list:
 
     output_paths = []
 
-    # Su Railway (nixpacks) Chromium è installato da sistema; usa il path di sistema
-    _chromium_candidates = [
-        os.environ.get("CHROMIUM_PATH", ""),
-        "/usr/bin/chromium",
-        "/usr/bin/chromium-browser",
-        "/usr/bin/google-chrome",
-        "/run/current-system/sw/bin/chromium",
-    ]
-    _chromium_exe = next((p for p in _chromium_candidates if p and Path(p).exists()), None)
-    _launch_kwargs = {"args": ["--no-sandbox", "--disable-dev-shm-usage"]}
-    if _chromium_exe:
-        _launch_kwargs["executable_path"] = _chromium_exe
-        logger.info(f"slide_renderer: uso Chromium di sistema → {_chromium_exe}")
+    try:
+        with _sync_playwright() as p:
+            browser = p.chromium.launch(**_launch_kwargs)
+            page = browser.new_page(viewport={"width": 1080, "height": 1080})
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(**_launch_kwargs)
-        page = browser.new_page(viewport={"width": 1080, "height": 1080})
+            for i, (name, html) in enumerate(templates, 1):
+                try:
+                    page.set_content(html, wait_until="networkidle")
+                    page.wait_for_timeout(1500)
+                    out_path = output_dir / f"{safe_id}_{name}.png"
+                    page.screenshot(path=str(out_path), full_page=False)
+                    output_paths.append(out_path)
+                    logger.info(f"  Slide {i}/5 renderizzata: {out_path.name}")
+                except Exception as e:
+                    logger.error(f"  Errore slide {i}: {e}")
 
-        for i, (name, html) in enumerate(templates, 1):
-            try:
-                page.set_content(html, wait_until="networkidle")
-                # Attendi font Google Fonts
-                page.wait_for_timeout(1500)
+            browser.close()
 
-                out_path = output_dir / f"{safe_id}_{name}.png"
-                page.screenshot(path=str(out_path), full_page=False)
-                output_paths.append(out_path)
-                logger.info(f"  Slide {i}/5 renderizzata: {out_path.name}")
-
-            except Exception as e:
-                logger.error(f"  Errore slide {i}: {e}")
-
-        browser.close()
+    except Exception as e:
+        logger.warning(f"Playwright/Chromium fallito ({e}) → fallback Pillow")
+        return _use_pillow_fallback(f"Chromium launch error: {e}")
 
     logger.info(f"Renderizzate {len(output_paths)}/5 slide in {output_dir}")
     return output_paths
