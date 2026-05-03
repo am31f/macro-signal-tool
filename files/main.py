@@ -1039,31 +1039,35 @@ async def instagram_status():
     """
     Stato dell'integrazione Instagram: credenziali, info account, commenti risposti.
     """
-    status: dict = {
-        "configured": _instagram_available,
-        "timestamp": datetime.now(tz=timezone.utc).isoformat(),
-    }
+    import traceback as _tb
+    try:
+        status: dict = {
+            "configured": _instagram_available,
+            "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+        }
 
-    if _instagram_available:
-        try:
-            from instagram_publisher import get_account_info
-            account = await get_account_info()
-            status["account"] = account
-        except Exception as e:
-            status["account_error"] = str(e)
+        if _instagram_available:
+            try:
+                from instagram_publisher import get_account_info
+                account = await get_account_info()
+                status["account"] = account
+            except Exception as e:
+                status["account_error"] = str(e)
 
-        try:
-            from comment_handler import _load_replied
-            replied = _load_replied()
-            status["comments_replied_total"] = len(replied)
-        except Exception:
-            pass
-    else:
-        status["message"] = (
-            "Aggiungi IG_ACCESS_TOKEN e IG_BUSINESS_ACCOUNT_ID in .env per attivare."
-        )
+            try:
+                from comment_handler import _load_replied
+                replied = _load_replied()
+                status["comments_replied_total"] = len(replied)
+            except Exception:
+                pass
+        else:
+            status["message"] = (
+                "Aggiungi IG_ACCESS_TOKEN e IG_BUSINESS_ACCOUNT_ID in .env per attivare."
+            )
 
-    return status
+        return status
+    except Exception as e:
+        return {"error": str(e), "traceback": _tb.format_exc()}
 
 
 @app.post("/instagram/comments", summary="Elabora commenti Instagram recenti")
