@@ -303,6 +303,10 @@ def render_carousel_slides(content_dict: dict, output_dir: Path = None) -> list:
     """
     Renderizza le 5 slide del carosello come PNG 1080x1080.
 
+    Prova prima Playwright (qualità massima con CSS/font Google).
+    Se Playwright o Chromium non sono disponibili (es. Railway),
+    usa automaticamente il renderer Pillow come fallback.
+
     Args:
         content_dict: dict (da IGCarouselContent o asdict())
         output_dir: directory dove salvare i PNG (default: /tmp/kairos_slides/)
@@ -310,11 +314,45 @@ def render_carousel_slides(content_dict: dict, output_dir: Path = None) -> list:
     Returns:
         lista di Path ai file PNG generati
     """
+    # ── Fallback Pillow se Playwright non è disponibile ───────────────────────
     try:
-        from playwright.sync_api import sync_playwright
+        from playwright.sync_api import sync_playwright as _sync_playwright
+        _playwright_ok = True
     except ImportError:
-        logger.error("Playwright non installato. Esegui: pip install playwright && playwright install chromium")
-        return []
+        _playwright_ok = False
+
+    if not _playwright_ok:
+        logger.info("Playwright non disponibile → uso renderer Pillow")
+        try:
+            from slide_renderer_pillow import render_carousel_slides_pillow
+            out = output_dir if output_dir is not None else SLIDES_DIR
+            return render_carousel_slides_pillow(content_dict, out)
+        except Exception as e:
+            logger.error(f"Anche Pillow renderer fallito: {e}")
+            return []
+
+    # Controlla se Chromium di sistema è disponibile
+    _chromium_candidates = [
+        os.environ.get("CHROMIUM_PATH", ""),
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/google-chrome",
+        "/run/current-system/sw/bin/chromium",
+    ]
+    _chromium_exe = next((p for p in _chromium_candidates if p and Path(p).exists()), None)
+    _launch_kwargs: dict = {"args": ["--no-sandbox", "--disable-dev-shm-usage"]}
+    if _chromium_exe:
+        _launch_kwargs["executable_path"] = _chromium_exe
+
+    # Prova a lanciare Playwright — se fallisce usa Pillow
+    try:
+        import subprocess
+        test = subprocess.run(
+            ["playwright", "install", "--dry-run", "chromium"],
+            capture_output=True, timeout=5
+        )
+    except Exception:
+        pass
 
     if output_dir is None:
         output_dir = SLIDES_DIR

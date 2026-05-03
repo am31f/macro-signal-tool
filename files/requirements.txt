@@ -30,7 +30,11 @@ aiohttp>=3.9.0
 python-telegram-bot>=21.0
 
 # ── Instagram / Phase 8 ───────────────────────────────────────────────────────
-# Playwright per rendering HTML → PNG (slide carosello)
+# Pillow — renderer slide senza browser (fallback per Railway)
+Pillow>=10.0.0
+
+# Playwright per rendering HTML → PNG (slide carosello, opzionale)
+# Se non disponibile, il sistema usa automaticamente Pillow come fallback
 # Dopo pip install, eseguire: playwright install chromium
 playwright>=1.44.0
 
