@@ -242,13 +242,12 @@ async def _scheduled_instagram_post():
         logger.error(f"Scheduled Instagram post error: {e}", exc_info=True)
 
 
-def _publish_instagram_carousel_sync(dry_run: bool = False) -> dict:
+async def _publish_instagram_carousel_sync(dry_run: bool = False) -> dict:
     """
-    Versione sincrona del flusso di pubblicazione carosello.
+    Flusso di pubblicazione carosello (async).
     Usato sia dallo scheduler che dall'endpoint manuale.
     """
     import tempfile
-    import asyncio as _aio
 
     try:
         cache_path = DATA_DIR / "signals_cache.json"
@@ -291,7 +290,7 @@ def _publish_instagram_carousel_sync(dry_run: bool = False) -> dict:
             if hashtags:
                 caption = caption.rstrip() + "\n\n" + " ".join(f"#{h}" for h in hashtags)
 
-            result = _aio.run(publish_carousel(slide_paths, caption))
+            result = await publish_carousel(slide_paths, caption)
             if result and result.success:
                 logger.info(f"Instagram: carosello pubblicato OK post_id={result.post_id}")
                 return {
@@ -996,7 +995,8 @@ async def instagram_publish_manual(background_tasks: BackgroundTasks, dry_run: b
             ),
         }
 
-    background_tasks.add_task(_publish_instagram_carousel_sync, dry_run)
+    import asyncio as _aio
+    _aio.create_task(_publish_instagram_carousel_sync(dry_run))
     return {
         "status": "started",
         "dry_run": dry_run,
@@ -1018,8 +1018,7 @@ async def instagram_status():
     if _instagram_available:
         try:
             from instagram_publisher import get_account_info
-            import asyncio as _aio
-            account = _aio.run(get_account_info())
+            account = await get_account_info()
             status["account"] = account
         except Exception as e:
             status["account_error"] = str(e)

@@ -335,8 +335,22 @@ def render_carousel_slides(content_dict: dict, output_dir: Path = None) -> list:
 
     output_paths = []
 
+    # Su Railway (nixpacks) Chromium è installato da sistema; usa il path di sistema
+    _chromium_candidates = [
+        os.environ.get("CHROMIUM_PATH", ""),
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/google-chrome",
+        "/run/current-system/sw/bin/chromium",
+    ]
+    _chromium_exe = next((p for p in _chromium_candidates if p and Path(p).exists()), None)
+    _launch_kwargs = {"args": ["--no-sandbox", "--disable-dev-shm-usage"]}
+    if _chromium_exe:
+        _launch_kwargs["executable_path"] = _chromium_exe
+        logger.info(f"slide_renderer: uso Chromium di sistema → {_chromium_exe}")
+
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        browser = p.chromium.launch(**_launch_kwargs)
         page = browser.new_page(viewport={"width": 1080, "height": 1080})
 
         for i, (name, html) in enumerate(templates, 1):
@@ -403,8 +417,20 @@ body {{ width: 1080px; height: 1920px; }}
     signal_id = content_dict.get("signal_id", "unknown")
     safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(signal_id))
 
+    _chromium_candidates = [
+        os.environ.get("CHROMIUM_PATH", ""),
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/google-chrome",
+        "/run/current-system/sw/bin/chromium",
+    ]
+    _chromium_exe = next((p for p in _chromium_candidates if p and Path(p).exists()), None)
+    _launch_kwargs = {"args": ["--no-sandbox", "--disable-dev-shm-usage"]}
+    if _chromium_exe:
+        _launch_kwargs["executable_path"] = _chromium_exe
+
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        browser = p.chromium.launch(**_launch_kwargs)
         page = browser.new_page(viewport={"width": 1080, "height": 1920})
         page.set_content(story_html, wait_until="networkidle")
         page.wait_for_timeout(1500)
