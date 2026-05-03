@@ -42,6 +42,7 @@ load_dotenv(Path(__file__).parent / ".env")
 
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # Moduli MacroSignalTool
@@ -135,6 +136,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve le slide Instagram come file statici pubblici
+# Meta Graph API richiede URL pubblici per le immagini del carosello
+_ig_slides_dir = Path(__file__).parent / "ig_slides"
+_ig_slides_dir.mkdir(exist_ok=True)
+app.mount("/static/ig_slides", StaticFiles(directory=str(_ig_slides_dir)), name="ig_slides")
 
 
 # ─── Startup ──────────────────────────────────────────────────────────────────
