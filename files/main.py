@@ -1090,6 +1090,61 @@ async def instagram_render_test():
         return {"status": "ERROR", "error": str(e), "traceback": _tb.format_exc()}
 
 
+@app.get("/instagram/font-test", summary="Testa disponibilità font su Railway")
+async def instagram_font_test():
+    """Verifica quali font sono disponibili e se Pillow funziona."""
+    import traceback as _tb, subprocess as _sp
+    result = {"pillow": False, "fonts": {}, "font_paths": {}, "errors": []}
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        result["pillow"] = True
+        # Prova a caricare default font
+        df = ImageFont.load_default()
+        img = Image.new("RGB", (100, 100))
+        d = ImageDraw.Draw(img)
+        try:
+            bbox = d.textbbox((0, 0), "Test", font=df)
+            result["default_font_textbbox"] = str(bbox)
+        except Exception as e:
+            result["default_font_textbbox_error"] = str(e)
+        # Cerca font sul sistema
+        font_paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+        ]
+        for fp in font_paths:
+            from pathlib import Path as _P
+            result["font_paths"][fp] = _P(fp).exists()
+        # Lista tutti i font trovati
+        try:
+            r = _sp.run(["find", "/usr/share/fonts", "-name", "*.ttf"],
+                        capture_output=True, text=True, timeout=5)
+            result["available_ttf"] = r.stdout.strip().splitlines()[:20]
+        except Exception as e:
+            result["font_find_error"] = str(e)
+        # Prova render_slide1 con traceback completo
+        try:
+            from slide_renderer_pillow import render_carousel_slides_pillow
+            import tempfile
+            mock = {"signal_id": "ft", "hook_title": "Test", "hook_subtitle": "",
+                    "eyebrow": "TEST", "date_label": "oggi",
+                    "context_title": "ctx", "context_stats": [],
+                    "historical_title": "hist", "historical_rows": [],
+                    "sectors_title": "sec", "bullish_sectors": "A", "bearish_sectors": "B",
+                    "cta_question": "CTA?", "cta_body": "body", "cta_channel": "@test",
+                    "source_label": "src", "caption": "", "hashtags": []}
+            with tempfile.TemporaryDirectory() as td:
+                slides = render_carousel_slides_pillow(mock, _P(td))
+                result["slides_rendered"] = len(slides)
+        except Exception as e:
+            result["render_error"] = str(e)
+            result["render_traceback"] = _tb.format_exc()
+    except ImportError as e:
+        result["errors"].append(f"Pillow import failed: {e}")
+    return result
+
+
 @app.post("/instagram/publish-sync", summary="Pubblica carosello Instagram (sincrono, mostra errori)")
 async def instagram_publish_sync(dry_run: bool = True):
     """
