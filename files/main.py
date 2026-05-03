@@ -73,6 +73,35 @@ try:
 except ImportError:
     _email_digest_available = False
 
+# Phase 8: Instagram (opzionale — degrada gracefully se non configurato)
+try:
+    from instagram_content_generator import generate_carousel_content
+    from slide_renderer import render_carousel_slides
+    from instagram_publisher import publish_carousel
+    from comment_handler import process_recent_comments
+
+    def pick_top_signal(cache_path: str) -> Optional[dict]:
+        """Seleziona il segnale con confidence più alta dalla cache."""
+        try:
+            with open(cache_path) as f:
+                signals = json.load(f)
+            if not signals:
+                return None
+            return max(signals, key=lambda s: s.get("confidence", 0))
+        except Exception:
+            return None
+
+    _ig_token = os.getenv("IG_ACCESS_TOKEN", "")
+    _ig_account = os.getenv("IG_BUSINESS_ACCOUNT_ID", "")
+    _instagram_available = bool(_ig_token and _ig_account)
+except ImportError as _ig_err:
+    _instagram_available = False
+    generate_carousel_content = None
+    render_carousel_slides = None
+    publish_carousel = None
+    process_recent_comments = None
+    pick_top_signal = None
+
 # ─── Config ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
