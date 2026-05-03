@@ -85,10 +85,17 @@ try:
         """Seleziona il segnale con confidence più alta dalla cache."""
         try:
             with open(cache_path) as f:
-                signals = json.load(f)
+                data = json.load(f)
+            # La cache ha struttura {"timestamp":..., "signals":[...]}
+            if isinstance(data, dict):
+                signals = data.get("signals", [])
+            elif isinstance(data, list):
+                signals = data
+            else:
+                return None
             if not signals:
                 return None
-            return max(signals, key=lambda s: s.get("confidence", 0))
+            return max(signals, key=lambda s: s.get("confidence_composite", s.get("confidence", 0)))
         except Exception:
             return None
 
