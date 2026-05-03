@@ -3,6 +3,13 @@ slide_renderer_pillow.py
 Renderer alternativo per Railway — usa Pillow invece di Playwright.
 Nessuna dipendenza da Chromium/browser.
 
+Usa i campi di IGCarouselContent:
+  hook_title, hook_subtitle, hook_eyebrow, date_label
+  context_title, context_stats (list of {value, label})
+  historical_title, historical_rows (list of {label, value, positive})
+  sectors_title, bullish_sectors, bearish_sectors
+  cta_question, cta_body, cta_channel
+
 Palette Kairós:
   Ink    #0E0E0C  — foreground
   Paper  #F5F2E6  — background
@@ -10,20 +17,19 @@ Palette Kairós:
 """
 
 import logging
-import os
-import textwrap
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger("slide_renderer_pillow")
 
 # Palette
-INK   = (14, 14, 12)
-PAPER = (245, 242, 230)
-GOLD  = (184, 137, 59)
-GOLD_SOFT = (201, 160, 98)
-INK_50 = (107, 107, 98)
-INK_15 = (212, 211, 199)
+INK      = (14, 14, 12)
+PAPER    = (245, 242, 230)
+GOLD     = (184, 137, 59)
+GOLD_SOFT= (201, 160, 98)
+INK_50   = (107, 107, 98)
+INK_15   = (212, 211, 199)
+POS      = (45, 95, 63)
+NEG      = (140, 45, 45)
 
 W, H = 1080, 1080
 
@@ -33,7 +39,6 @@ def _get_fonts():
     try:
         from PIL import ImageFont
 
-        # Percorsi possibili per i font bundled nel repo
         repo_root = Path(__file__).parent
         fonts_dir = repo_root / "fonts"
 
@@ -41,20 +46,11 @@ def _get_fonts():
             fonts_dir / "CormorantGaramond-Medium.ttf",
             Path("/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"),
             Path("/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf"),
-            Path("/System/Library/Fonts/Times.ttc"),
-            Path("C:/Windows/Fonts/times.ttf"),
         ]
         candidates_sans = [
             fonts_dir / "InterTight-Regular.ttf",
             Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
             Path("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"),
-            Path("/System/Library/Fonts/Helvetica.ttc"),
-            Path("C:/Windows/Fonts/arial.ttf"),
-        ]
-        candidates_serif_italic = [
-            fonts_dir / "CormorantGaramond-MediumItalic.ttf",
-            Path("/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf"),
-            Path("/usr/share/fonts/truetype/liberation/LiberationSerif-Italic.ttf"),
         ]
         candidates_mono = [
             fonts_dir / "JetBrainsMono-Regular.ttf",
@@ -72,298 +68,291 @@ def _get_fonts():
             return ImageFont.load_default()
 
         return {
-            "serif_xl":    load(candidates_serif, 72),
-            "serif_lg":    load(candidates_serif, 52),
-            "serif_md":    load(candidates_serif, 38),
-            "serif_sm":    load(candidates_serif, 28),
-            "serif_italic":load(candidates_serif_italic, 34),
-            "sans_md":     load(candidates_sans, 26),
-            "sans_sm":     load(candidates_sans, 20),
-            "sans_xs":     load(candidates_sans, 16),
-            "mono_sm":     load(candidates_mono, 18),
-            "mono_xs":     load(candidates_mono, 14),
+            "serif_xl":  load(candidates_serif, 68),
+            "serif_lg":  load(candidates_serif, 52),
+            "serif_md":  load(candidates_serif, 38),
+            "serif_sm":  load(candidates_serif, 28),
+            "sans_lg":   load(candidates_sans, 30),
+            "sans_md":   load(candidates_sans, 24),
+            "sans_sm":   load(candidates_sans, 20),
+            "sans_xs":   load(candidates_sans, 16),
+            "mono_sm":   load(candidates_mono, 18),
+            "mono_xs":   load(candidates_mono, 14),
         }
     except ImportError:
         return {}
 
 
-def _draw_slide_base(draw, img, bg=PAPER, border_color=INK):
-    """Background + bordo Kairós."""
-    from PIL import ImageDraw
-    img.paste(bg, [0, 0, W, H])
-    # Bordo sottile
-    draw.rectangle([0, 0, W-1, H-1], outline=border_color, width=2)
-    # Gold bar top
-    draw.rectangle([0, 0, W, 4], fill=GOLD)
-
-
-def _wrap_text(text, font, max_width, draw):
-    """Wrappa il testo per stare dentro max_width px."""
-    words = text.split()
-    lines = []
-    current = ""
-    for word in words:
-        test = (current + " " + word).strip()
-        bbox = draw.textbbox((0, 0), test, font=font)
-        if bbox[2] <= max_width:
-            current = test
+def _wrap(draw, text, font, max_w):
+    """Wrappa testo per stare in max_w px."""
+    words = str(text).split()
+    lines, cur = [], ""
+    for w in words:
+        test = (cur + " " + w).strip()
+        try:
+            bbox = draw.textbbox((0, 0), test, font=font)
+            wide = bbox[2]
+        except Exception:
+            wide = len(test) * 12
+        if wide <= max_w:
+            cur = test
         else:
-            if current:
-                lines.append(current)
-            current = word
-    if current:
-        lines.append(current)
+            if cur:
+                lines.append(cur)
+            cur = w
+    if cur:
+        lines.append(cur)
     return lines
-
-
-def _draw_eyebrow(draw, text, y, fonts, color=GOLD):
-    """Etichetta piccola uppercase mono."""
-    font = fonts.get("mono_xs")
-    draw.text((60, y), text.upper(), font=font, fill=color)
-    return y + 24
-
-
-def _draw_rule(draw, y, color=INK_15, margin=60):
-    """Linea orizzontale sottile."""
-    draw.line([(margin, y), (W - margin, y)], fill=color, width=1)
-    return y + 1
 
 
 def _draw_kairos_mark(draw, x, y, size=48, color=INK):
     """Logo K geometrico Kairós."""
     s = size / 100
-    # Stelo verticale
-    draw.rectangle(
-        [x + 20*s, y + 15*s, x + 30*s, y + 85*s],
-        fill=color
-    )
-    # Cuneo superiore
-    draw.polygon(
-        [(x + 32*s, y + 50*s), (x + 80*s, y + 15*s), (x + 80*s, y + 49*s)],
-        fill=GOLD
-    )
-    # Cuneo inferiore
-    draw.polygon(
-        [(x + 32*s, y + 50*s), (x + 80*s, y + 51*s), (x + 80*s, y + 85*s)],
-        fill=color
-    )
+    draw.rectangle([x + 20*s, y + 15*s, x + 30*s, y + 85*s], fill=color)
+    draw.polygon([(x+32*s, y+50*s), (x+80*s, y+15*s), (x+80*s, y+49*s)], fill=GOLD)
+    draw.polygon([(x+32*s, y+50*s), (x+80*s, y+51*s), (x+80*s, y+85*s)], fill=color)
 
 
-def render_slide1(content_dict: dict, output_path: Path, fonts: dict):
-    """Slide 1 — Hook title su sfondo Ink."""
+def render_slide1(c: dict, output_path: Path, fonts: dict):
+    """Slide 1 — Hook su sfondo Ink."""
     from PIL import Image, ImageDraw
     img = Image.new("RGB", (W, H), INK)
     draw = ImageDraw.Draw(img)
 
     # Gold bar top
     draw.rectangle([0, 0, W, 4], fill=GOLD)
-    # Bordo angoli gold
-    c = 32
-    for rx, ry in [(48, 48), (W-48-c, 48), (48, H-48-c), (W-48-c, H-48-c)]:
-        draw.rectangle([rx, ry, rx+c, ry+c], outline=GOLD, width=2)
+    # Corner marks
+    cs = 28
+    for rx, ry in [(48, 48), (W-48-cs, 48), (48, H-48-cs), (W-48-cs, H-48-cs)]:
+        draw.rectangle([rx, ry, rx+cs, ry+cs], outline=GOLD, width=2)
 
-    # Logo mark + wordmark
-    _draw_kairos_mark(draw, 60, 60, size=52, color=PAPER)
-    wm_font = fonts.get("sans_sm")
-    draw.text((122, 72), "KAIRÓS", font=wm_font, fill=PAPER)
+    # Wordmark
+    _draw_kairos_mark(draw, 60, 60, size=48, color=PAPER)
+    draw.text((118, 70), "KAIRÓS", font=fonts.get("sans_sm"), fill=PAPER)
 
-    # Eyebrow
-    eyebrow_font = fonts.get("mono_xs")
-    date_label = content_dict.get("date_label", "")
-    draw.text((60, 160), f"· MACRO SIGNAL · {date_label}", font=eyebrow_font, fill=GOLD_SOFT)
-    draw.line([(60, 185), (W-60, 185)], fill=GOLD, width=1)
+    # Eyebrow + date
+    eyebrow = c.get("eyebrow", c.get("event_category", "MACRO SIGNAL"))
+    date_label = c.get("date_label", "")
+    draw.text((60, 160), f"· {eyebrow} · {date_label}", font=fonts.get("mono_xs"), fill=GOLD_SOFT)
+    draw.line([(60, 188), (W-60, 188)], fill=GOLD, width=1)
 
-    # Hook title — grande serif
-    hook = content_dict.get("hook_title", "")
+    # Hook title
+    hook = c.get("hook_title", "")
     title_font = fonts.get("serif_lg")
-    lines = _wrap_text(hook, title_font, W - 120, draw)
-    y = 220
-    for line in lines[:4]:
+    y = 218
+    for line in _wrap(draw, hook, title_font, W-120)[:4]:
         draw.text((60, y), line, font=title_font, fill=PAPER)
-        y += 64
+        y += 62
+
+    # Rule
+    draw.line([(60, y+8), (W-60, y+8)], fill=GOLD_SOFT, width=1)
+    y += 24
 
     # Hook subtitle
-    sub = content_dict.get("hook_subtitle", "")
+    sub = c.get("hook_subtitle", "")
     if sub:
         sub_font = fonts.get("sans_md")
-        sub_lines = _wrap_text(sub, sub_font, W - 120, draw)
-        y += 16
-        for line in sub_lines[:3]:
+        for line in _wrap(draw, sub, sub_font, W-120)[:3]:
             draw.text((60, y), line, font=sub_font, fill=INK_15)
-            y += 36
+            y += 34
 
-    # Footer
-    draw.line([(60, H-100), (W-60, H-100)], fill=GOLD, width=1)
-    footer_font = fonts.get("mono_xs")
-    draw.text((60, H-80), "SEGUI @karios_finance PER I SEGNALI DI OGGI", font=footer_font, fill=INK_50)
+    # Footer hint
+    draw.text((60, H-80), "SCORRI PER CAPIRE L'IMPATTO  →", font=fonts.get("mono_xs"), fill=INK_50)
+    draw.text((W-100, H-80), "1/5", font=fonts.get("mono_xs"), fill=INK_50)
 
     img.save(str(output_path), "PNG")
 
 
-def render_slide2(content_dict: dict, output_path: Path, fonts: dict):
-    """Slide 2 — Context su sfondo Paper."""
+def render_slide2(c: dict, output_path: Path, fonts: dict):
+    """Slide 2 — Contesto con stats."""
     from PIL import Image, ImageDraw
     img = Image.new("RGB", (W, H), PAPER)
     draw = ImageDraw.Draw(img)
-    _draw_slide_base(draw, img)
 
-    y = 60
-    _draw_kairos_mark(draw, 60, y, size=40, color=INK)
-    draw.text((112, y+6), "KAIRÓS", font=fonts.get("sans_xs"), fill=INK_50)
+    draw.rectangle([0, 0, W, 4], fill=GOLD)
+    draw.rectangle([0, 0, W-1, H-1], outline=INK_15, width=1)
 
-    y = 140
-    draw.text((60, y), "02 / CONTESTO", font=fonts.get("mono_xs"), fill=GOLD)
-    y += 32
+    _draw_kairos_mark(draw, 60, 52, size=38, color=INK)
+    draw.text((108, 60), "KAIRÓS", font=fonts.get("sans_xs"), fill=INK_50)
+    draw.text((W-80, 60), "2/5", font=fonts.get("mono_xs"), fill=INK_50)
+
+    y = 136
+    draw.text((60, y), "IL CONTESTO", font=fonts.get("mono_xs"), fill=GOLD)
+    y += 30
     draw.line([(60, y), (W-60, y)], fill=INK, width=1)
-    y += 32
+    y += 28
 
-    context_title = content_dict.get("context_title", "Contesto macroeconomico")
-    draw.text((60, y), context_title, font=fonts.get("serif_md"), fill=INK)
-    y += 56
+    ctx_title = c.get("context_title", "Perché conta")
+    for line in _wrap(draw, ctx_title, fonts.get("serif_md"), W-120)[:2]:
+        draw.text((60, y), line, font=fonts.get("serif_md"), fill=INK)
+        y += 48
+    y += 12
 
-    context_body = content_dict.get("context_body", "")
-    body_font = fonts.get("sans_md")
-    for para in context_body.split("\n")[:6]:
-        lines = _wrap_text(para.strip(), body_font, W - 120, draw)
-        for line in lines:
-            draw.text((60, y), line, font=body_font, fill=INK)
-            y += 34
-        y += 8
-        if y > H - 140:
-            break
+    # Stats
+    stats = c.get("context_stats", [])
+    if isinstance(stats, list):
+        for stat in stats[:3]:
+            val   = stat.get("value", "—") if isinstance(stat, dict) else str(stat)
+            label = stat.get("label", "")  if isinstance(stat, dict) else ""
+            draw.text((60, y), str(val), font=fonts.get("serif_lg"), fill=GOLD)
+            y += 58
+            draw.text((60, y), str(label), font=fonts.get("sans_md"), fill=INK_50)
+            y += 32
+            draw.line([(60, y), (W-60, y)], fill=INK_15, width=1)
+            y += 20
+            if y > H - 100:
+                break
 
-    draw.line([(60, H-80), (W-60, H-80)], fill=INK_15, width=1)
-    draw.text((60, H-60), "→ CONTINUA", font=fonts.get("mono_xs"), fill=GOLD)
+    src = c.get("source_label", "")
+    if src:
+        draw.text((60, H-56), f"FONTE: {src}", font=fonts.get("mono_xs"), fill=INK_50)
 
     img.save(str(output_path), "PNG")
 
 
-def render_slide3(content_dict: dict, output_path: Path, fonts: dict):
-    """Slide 3 — Historical precedents su sfondo Paper."""
-    from PIL import Image, ImageDraw
-    img = Image.new("RGB", (W, H), PAPER)
-    draw = ImageDraw.Draw(img)
-    _draw_slide_base(draw, img)
-
-    y = 60
-    _draw_kairos_mark(draw, 60, y, size=40, color=INK)
-    draw.text((112, y+6), "KAIRÓS", font=fonts.get("sans_xs"), fill=INK_50)
-
-    y = 140
-    draw.text((60, y), "03 / PRECEDENTI STORICI", font=fonts.get("mono_xs"), fill=GOLD)
-    y += 32
-    draw.line([(60, y), (W-60, y)], fill=INK, width=1)
-    y += 32
-
-    hist_title = content_dict.get("history_title", "Cosa ci dice la storia")
-    draw.text((60, y), hist_title, font=fonts.get("serif_md"), fill=INK)
-    y += 56
-
-    hist_body = content_dict.get("history_body", "")
-    body_font = fonts.get("sans_md")
-    for para in hist_body.split("\n")[:6]:
-        lines = _wrap_text(para.strip(), body_font, W - 120, draw)
-        for line in lines:
-            draw.text((60, y), line, font=body_font, fill=INK)
-            y += 34
-        y += 8
-        if y > H - 140:
-            break
-
-    draw.line([(60, H-80), (W-60, H-80)], fill=INK_15, width=1)
-    draw.text((60, H-60), "→ CONTINUA", font=fonts.get("mono_xs"), fill=GOLD)
-
-    img.save(str(output_path), "PNG")
-
-
-def render_slide4(content_dict: dict, output_path: Path, fonts: dict):
-    """Slide 4 — Settori e asset impattati."""
-    from PIL import Image, ImageDraw
-    img = Image.new("RGB", (W, H), PAPER)
-    draw = ImageDraw.Draw(img)
-    _draw_slide_base(draw, img)
-
-    y = 60
-    _draw_kairos_mark(draw, 60, y, size=40, color=INK)
-    draw.text((112, y+6), "KAIRÓS", font=fonts.get("sans_xs"), fill=INK_50)
-
-    y = 140
-    draw.text((60, y), "04 / ASSET & SETTORI", font=fonts.get("mono_xs"), fill=GOLD)
-    y += 32
-    draw.line([(60, y), (W-60, y)], fill=INK, width=1)
-    y += 32
-
-    sectors_title = content_dict.get("sectors_title", "Chi viene impattato")
-    draw.text((60, y), sectors_title, font=fonts.get("serif_md"), fill=INK)
-    y += 56
-
-    sectors = content_dict.get("sectors_list", [])
-    if isinstance(sectors, str):
-        sectors = [s.strip() for s in sectors.split(",") if s.strip()]
-
-    item_font = fonts.get("sans_md")
-    mono_font = fonts.get("mono_xs")
-    for sector in sectors[:6]:
-        draw.rectangle([60, y, 68, y+26], fill=GOLD)
-        draw.text((84, y), sector, font=item_font, fill=INK)
-        y += 44
-        if y > H - 140:
-            break
-
-    sectors_body = content_dict.get("sectors_body", "")
-    if sectors_body and y < H - 200:
-        y += 16
-        draw.line([(60, y), (W-60, y)], fill=INK_15, width=1)
-        y += 20
-        for line in _wrap_text(sectors_body, item_font, W-120, draw)[:3]:
-            draw.text((60, y), line, font=item_font, fill=INK_50)
-            y += 34
-
-    draw.line([(60, H-80), (W-60, H-80)], fill=INK_15, width=1)
-    draw.text((60, H-60), "→ CONTINUA", font=mono_font, fill=GOLD)
-
-    img.save(str(output_path), "PNG")
-
-
-def render_slide5(content_dict: dict, output_path: Path, fonts: dict):
-    """Slide 5 — CTA finale su sfondo Ink."""
+def render_slide3(c: dict, output_path: Path, fonts: dict):
+    """Slide 3 — Storico su sfondo Ink."""
     from PIL import Image, ImageDraw
     img = Image.new("RGB", (W, H), INK)
     draw = ImageDraw.Draw(img)
 
     draw.rectangle([0, 0, W, 4], fill=GOLD)
-    c = 32
-    for rx, ry in [(48, 48), (W-48-c, 48), (48, H-48-c), (W-48-c, H-48-c)]:
-        draw.rectangle([rx, ry, rx+c, ry+c], outline=GOLD, width=2)
 
-    _draw_kairos_mark(draw, 60, 60, size=52, color=PAPER)
-    draw.text((122, 72), "KAIRÓS", font=fonts.get("sans_sm"), fill=PAPER)
+    _draw_kairos_mark(draw, 60, 52, size=38, color=PAPER)
+    draw.text((108, 60), "KAIRÓS", font=fonts.get("sans_xs"), fill=INK_50)
+    draw.text((W-80, 60), "3/5", font=fonts.get("mono_xs"), fill=INK_50)
 
-    y = 280
-    draw.text((60, y), "05 / COSA FARE ORA", font=fonts.get("mono_xs"), fill=GOLD_SOFT)
-    y += 40
-    draw.line([(60, y), (W-60, y)], fill=GOLD, width=1)
+    y = 136
+    draw.text((60, y), "STORICO", font=fonts.get("mono_xs"), fill=GOLD_SOFT)
+    y += 30
+    draw.line([(60, y), (W-60, y)], fill=INK_15, width=1)
+    y += 28
+
+    hist_title = c.get("historical_title", c.get("history_title", "In eventi simili"))
+    for line in _wrap(draw, hist_title, fonts.get("serif_md"), W-120)[:2]:
+        draw.text((60, y), line, font=fonts.get("serif_md"), fill=PAPER)
+        y += 48
+    y += 16
+
+    rows = c.get("historical_rows", [])
+    if isinstance(rows, list):
+        for row in rows[:5]:
+            if isinstance(row, dict):
+                label = row.get("label", "")
+                value = row.get("value", "")
+                positive = row.get("positive", True)
+            else:
+                label, value, positive = str(row), "", True
+            color = POS if positive else NEG
+            draw.text((60, y), str(label), font=fonts.get("sans_md"), fill=PAPER)
+            val_w = draw.textbbox((0,0), str(value), font=fonts.get("mono_sm"))[2]
+            draw.text((W-60-val_w, y), str(value), font=fonts.get("mono_sm"), fill=color)
+            y += 36
+            draw.line([(60, y), (W-60, y)], fill=(245,242,230,30), width=1)
+            y += 12
+            if y > H - 100:
+                break
+
+    draw.text((W-80, H-56), "3/5", font=fonts.get("mono_xs"), fill=INK_50)
+
+    img.save(str(output_path), "PNG")
+
+
+def render_slide4(c: dict, output_path: Path, fonts: dict):
+    """Slide 4 — Settori: bullish vs bearish."""
+    from PIL import Image, ImageDraw
+    img = Image.new("RGB", (W, H), PAPER)
+    draw = ImageDraw.Draw(img)
+
+    draw.rectangle([0, 0, W, 4], fill=GOLD)
+    draw.rectangle([0, 0, W-1, H-1], outline=INK_15, width=1)
+
+    _draw_kairos_mark(draw, 60, 52, size=38, color=INK)
+    draw.text((108, 60), "KAIRÓS", font=fonts.get("sans_xs"), fill=INK_50)
+    draw.text((W-80, 60), "4/5", font=fonts.get("mono_xs"), fill=INK_50)
+
+    y = 136
+    draw.text((60, y), "COSA TENERE D'OCCHIO", font=fonts.get("mono_xs"), fill=GOLD)
+    y += 30
+    draw.line([(60, y), (W-60, y)], fill=INK, width=1)
+    y += 28
+
+    sectors_title = c.get("sectors_title", "Settori coinvolti")
+    for line in _wrap(draw, sectors_title, fonts.get("serif_md"), W-120)[:2]:
+        draw.text((60, y), line, font=fonts.get("serif_md"), fill=INK)
+        y += 48
+    y += 16
+
+    # Bullish block
+    bullish = c.get("bullish_sectors", "")
+    if bullish:
+        draw.rectangle([60, y, W-60, y+8], fill=POS)
+        y += 16
+        draw.text((60, y), "POTENZIALE BENEFICIO", font=fonts.get("mono_xs"), fill=POS)
+        y += 26
+        for line in _wrap(draw, bullish, fonts.get("sans_md"), W-140)[:3]:
+            draw.text((80, y), line, font=fonts.get("sans_md"), fill=INK)
+            y += 32
+        y += 20
+
+    # Bearish block
+    bearish = c.get("bearish_sectors", "")
+    if bearish:
+        draw.rectangle([60, y, W-60, y+8], fill=NEG)
+        y += 16
+        draw.text((60, y), "POTENZIALE PRESSIONE", font=fonts.get("mono_xs"), fill=NEG)
+        y += 26
+        for line in _wrap(draw, bearish, fonts.get("sans_md"), W-140)[:3]:
+            draw.text((80, y), line, font=fonts.get("sans_md"), fill=INK)
+            y += 32
+
+    draw.text((60, H-56), "Non è consulenza finanziaria · Elaborato da IA su fonti pubbliche",
+              font=fonts.get("mono_xs"), fill=INK_50)
+
+    img.save(str(output_path), "PNG")
+
+
+def render_slide5(c: dict, output_path: Path, fonts: dict):
+    """Slide 5 — CTA su sfondo Gold."""
+    from PIL import Image, ImageDraw
+    img = Image.new("RGB", (W, H), GOLD)
+    draw = ImageDraw.Draw(img)
+
+    # Struttura centrata
+    _draw_kairos_mark(draw, 60, 52, size=48, color=INK)
+    draw.text((118, 64), "KAIRÓS", font=fonts.get("sans_sm"), fill=INK)
+    draw.text((W-80, 64), "5/5", font=fonts.get("mono_xs"), fill=INK_50)
+
+    draw.line([(60, 130), (W-60, 130)], fill=INK, width=1)
+
+    y = 180
+    draw.text((60, y), "· KAIRÓS · IL MOMENTO OPPORTUNO", font=fonts.get("mono_xs"), fill=INK_50)
     y += 48
 
-    cta_title = content_dict.get("cta_title", "Il momento giusto è adesso")
+    cta_q = c.get("cta_question", c.get("cta_title", "Vuoi i segnali operativi?"))
     title_font = fonts.get("serif_lg")
-    for line in _wrap_text(cta_title, title_font, W-120, draw)[:3]:
-        draw.text((60, y), line, font=title_font, fill=PAPER)
-        y += 66
+    for line in _wrap(draw, cta_q, title_font, W-120)[:3]:
+        draw.text((60, y), line, font=title_font, fill=INK)
+        y += 64
+    y += 16
 
-    y += 24
-    cta_body = content_dict.get("cta_body", "")
-    body_font = fonts.get("sans_md")
-    for line in _wrap_text(cta_body, body_font, W-120, draw)[:4]:
-        draw.text((60, y), line, font=body_font, fill=INK_15)
-        y += 36
+    cta_body = c.get("cta_body", "")
+    if cta_body:
+        body_font = fonts.get("sans_md")
+        for line in _wrap(draw, cta_body, body_font, W-120)[:4]:
+            draw.text((60, y), line, font=body_font, fill=INK_50)
+            y += 34
+    y += 32
 
-    # CTA box
-    y = H - 220
-    draw.rectangle([60, y, W-60, y+120], outline=GOLD, width=2)
-    draw.text((80, y+20), "SEGUI PER I SEGNALI DI OGNI MATTINA", font=fonts.get("mono_xs"), fill=GOLD)
-    draw.text((80, y+52), "@karios_finance", font=fonts.get("serif_md"), fill=PAPER)
-    draw.text((80, y+90), "il canale Telegram @kairos.macro", font=fonts.get("sans_xs"), fill=INK_15)
+    # CTA button
+    cta_channel = c.get("cta_channel", "@kairos.macro su Telegram")
+    btn_y = H - 240
+    draw.rectangle([60, btn_y, W-60, btn_y+90], outline=INK, width=2)
+    ch_w = draw.textbbox((0,0), cta_channel, font=fonts.get("serif_md"))[2]
+    draw.text(((W - ch_w) // 2, btn_y + 22), cta_channel, font=fonts.get("serif_md"), fill=INK)
+
+    draw.text((60, H-56), "Generato da IA · Solo scopo informativo · Non è consulenza finanziaria",
+              font=fonts.get("mono_xs"), fill=INK_50)
 
     img.save(str(output_path), "PNG")
 
@@ -371,14 +360,14 @@ def render_slide5(content_dict: dict, output_path: Path, fonts: dict):
 def render_carousel_slides_pillow(content_dict: dict, output_dir) -> list:
     """
     Renderizza 5 slide del carosello Kairós con Pillow.
-    Fallback senza Playwright/Chromium — funziona su Railway.
+    Compatibile con i campi di IGCarouselContent.
 
     Returns: lista di Path ai file PNG
     """
     try:
         from PIL import Image, ImageDraw
     except ImportError:
-        logger.error("Pillow non installato. pip install Pillow")
+        logger.error("Pillow non installato")
         return []
 
     output_dir = Path(output_dir)
@@ -386,14 +375,14 @@ def render_carousel_slides_pillow(content_dict: dict, output_dir) -> list:
 
     fonts = _get_fonts()
     signal_id = content_dict.get("signal_id", "unknown")
-    safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(signal_id))[:40]
+    safe_id = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in str(signal_id))[:40]
 
     renderers = [
-        (f"{safe_id}_slide1_hook.png",     render_slide1),
-        (f"{safe_id}_slide2_context.png",  render_slide2),
-        (f"{safe_id}_slide3_history.png",  render_slide3),
-        (f"{safe_id}_slide4_sectors.png",  render_slide4),
-        (f"{safe_id}_slide5_cta.png",      render_slide5),
+        (f"{safe_id}_slide1_hook.png",    render_slide1),
+        (f"{safe_id}_slide2_context.png", render_slide2),
+        (f"{safe_id}_slide3_history.png", render_slide3),
+        (f"{safe_id}_slide4_sectors.png", render_slide4),
+        (f"{safe_id}_slide5_cta.png",     render_slide5),
     ]
 
     output_paths = []
@@ -413,37 +402,43 @@ def render_carousel_slides_pillow(content_dict: dict, output_dir) -> list:
 # ─── Test ─────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    import json, sys, tempfile
+    import tempfile
     logging.basicConfig(level=logging.INFO)
 
     mock = {
-        "signal_id": "test_pillow_001",
+        "signal_id": "test_pillow_002",
+        "eyebrow": "ENERGIA · GEOPOLITICA",
         "date_label": "03 Maggio 2026",
         "hook_title": "L'OPEC aumenta la produzione: cosa significa per i tuoi investimenti",
         "hook_subtitle": "Il cartello del petrolio sorprende i mercati con +188k barili/giorno",
-        "context_title": "Il contesto macroeconomico",
-        "context_body": "L'OPEC+ ha deciso di accelerare il ritmo di ripristino della produzione, aggiungendo 188.000 barili al giorno a partire da giugno.\n\nLa mossa arriva in un contesto di prezzi del petrolio già sotto pressione, con il Brent che tratta intorno a $70.",
-        "history_title": "I precedenti storici",
-        "history_body": "Nelle ultime tre occasioni in cui l'OPEC ha aumentato la produzione in modo significativo, il prezzo del petrolio è sceso del 8-15% nei 30 giorni successivi.\n\nI settori più colpiti sono stati energia e trasporti.",
-        "sectors_title": "Chi viene impattato",
-        "sectors_list": ["Energia (Short)", "Compagnie aeree (Long)", "Petrolchimico (Short)", "Auto elettriche (Long)"],
-        "sectors_body": "I produttori di petrolio registrano pressione ribassista mentre i consumatori di energia beneficiano.",
-        "cta_title": "Il momento giusto per agire",
-        "cta_body": "Monitora i livelli chiave di WTI e Brent. Un break sotto $68 apre spazio a ulteriori ribassi.",
+        "context_title": "Perché conta",
+        "context_stats": [
+            {"value": "+188k", "label": "barili/giorno aggiunti da giugno"},
+            {"value": "$70",   "label": "Brent sotto pressione"},
+            {"value": "-8%",   "label": "calo atteso nei 30 giorni successivi"},
+        ],
+        "historical_title": "In eventi simili, i mercati si sono mossi così",
+        "historical_rows": [
+            {"label": "Petrolio (Brent)",   "value": "-8% / -15%", "positive": False},
+            {"label": "Compagnie aeree",    "value": "+5% / +10%", "positive": True},
+            {"label": "Petrolchimico",      "value": "-5% / -8%",  "positive": False},
+            {"label": "Auto elettriche",    "value": "+3% / +7%",  "positive": True},
+        ],
+        "sectors_title": "Settori coinvolti",
+        "bullish_sectors": "Compagnie aeree, auto elettriche, manifattura energy-intensive",
+        "bearish_sectors": "Energia integrata, petrolchimico, produttori petrolio USA",
+        "cta_question": "Vuoi i segnali operativi completi?",
+        "cta_body": "Ticker, stop loss, target e sizing in tempo reale — solo su Telegram.",
+        "cta_channel": "@kairos.macro su Telegram",
+        "source_label": "Reuters · Bloomberg",
+        "caption": "Test caption",
+        "hashtags": ["macro", "finanza", "mercati"],
     }
 
     with tempfile.TemporaryDirectory() as tmpdir:
         slides = render_carousel_slides_pillow(mock, tmpdir)
-        print(f"\n{'='*50}")
-        print(f"Slide generate: {len(slides)}/5")
+        print("\n" + "=" * 50)
+        print("Slide generate: " + str(len(slides)) + "/5")
         for s in slides:
             size = Path(s).stat().st_size
-            print(f"  {Path(s).name}: {size:,} bytes")
-
-        # Copia per visualizzazione
-        import shutil
-        out_dir = Path("/sessions/great-pensive-carson/mnt/macro-signal-tool")
-        for s in slides:
-            dest = out_dir / Path(s).name
-            shutil.copy(s, dest)
-            print(f"  Copiato: {dest}")
+            print("  " + Path(s).name + ": " + str(size) + " bytes")
