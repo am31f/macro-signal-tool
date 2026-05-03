@@ -1,6 +1,6 @@
 """
 main.py
-Phase 4+6 — MacroSignalTool — FastAPI Orchestratore
+Phase 4+6+8 — MacroSignalTool — FastAPI Orchestratore
 
 Entry point dell'applicazione. Espone tutti i moduli via REST API.
 APScheduler: polling news 1h, update prezzi 15min, email digest 8:00 giornaliero.
@@ -19,6 +19,11 @@ Endpoints:
   POST /portfolio/update-prices — aggiorna prezzi e controlla stop/target
   GET  /performance             — report performance completo
   GET  /journal                 — trade journal ultimi 20 entry
+
+Phase 8 — Instagram:
+  POST /instagram/publish       — pubblica carosello Instagram (trigger manuale)
+  GET  /instagram/status        — stato Instagram (configurato, ultimo post, ecc.)
+  POST /instagram/comments      — processa commenti recenti (dry_run=true di default)
 
 Avvio: uvicorn main:app --reload --port 8000
 """
@@ -149,6 +154,27 @@ async def startup_event():
                 replace_existing=True,
             )
             logger.info("APScheduler: digest email schedulato alle 8:00 ✅")
+
+        # Phase 8: Instagram carousel giornaliero alle 09:00 CET
+        if _instagram_available:
+            scheduler.add_job(
+                _scheduled_instagram_post,
+                "cron",
+                hour=9,
+                minute=0,
+                timezone="Europe/Rome",
+                id="instagram_carousel",
+                replace_existing=True,
+            )
+            scheduler.add_job(
+                _scheduled_instagram_comments,
+                "interval",
+                hours=1,
+                id="instagram_comments",
+                replace_existing=True,
+            )
+            logger.info("APScheduler: Instagram carosello 09:00 CET + commenti ogni ora ✅")
+
         scheduler.start()
         logger.info("APScheduler avviato: ciclo completo ogni 3h, prezzi ogni 15min ✅")
     except ImportError:
@@ -195,6 +221,105 @@ async def _scheduled_price_update():
                 await _telegram.send_trade_closed(position, close_reason=reason)
     except Exception as e:
         logger.error(f"Scheduled price update error: {e}")
+
+
+
+async def _scheduled_instagram_post():
+    """
+    Task schedulato: pubblica carosello Instagram alle 09:00 CET.
+    Legge il segnale con confidence piu alta dalla cache, genera il contenuto
+    con Claude Haiku, renderizza le slide e pubblica su Instagram.
+    """
+    if not _instagram_available:
+        logger.info("Instagram: non configurato, skip")
+        return
+
+    logger.info("Instagram: avvio pubblicazione carosello giornaliero...")
+    try:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _publish_instagram_carousel_sync)
+    except Exception as e:
+        logger.error(f"Scheduled Instagram post error: {e}", exc_info=True)
+
+
+def _publish_instagram_carousel_sync(dry_run: bool = False) -> dict:
+    """
+    Versione sincrona del flusso di pubblicazione carosello.
+    Usato sia dallo scheduler che dall'endpoint manuale.
+    """
+    import tempfile
+    import asyncio as _aio
+
+    try:
+        cache_path = DATA_DIR / "signals_cache.json"
+        if not cache_path.exists():
+            logger.warning("Instagram: signals_cache.json non trovata — nessun post oggi")
+            return {"status": "NO_SIGNALS", "message": "Cache segnali vuota"}
+
+        top_signal = pick_top_signal(str(cache_path))
+        if not top_signal:
+            logger.warning("Instagram: nessun segnale idoneo per il carosello")
+            return {"status": "NO_SIGNALS", "message": "Nessun segnale idoneo"}
+
+        signal_headline = top_signal.get("headline", "")[:80]
+        logger.info(f"Instagram: segnale selezionato -> {signal_headline}")
+
+        content = generate_carousel_content(top_signal, top_signal)
+        if not content:
+            logger.error("Instagram: generate_carousel_content ha restituito None")
+            return {"status": "ERROR", "message": "Generazione contenuto fallita"}
+
+        content_dict = content.__dict__ if hasattr(content, "__dict__") else content
+
+        with tempfile.TemporaryDirectory(prefix="kairos_ig_") as tmpdir:
+            slide_paths = render_carousel_slides(content_dict, tmpdir)
+            logger.info(f"Instagram: {len(slide_paths)} slide renderizzate")
+
+            if not slide_paths:
+                return {"status": "ERROR", "message": "Rendering slide fallito"}
+
+            if dry_run:
+                logger.info("Instagram: [DRY RUN] slide pronte, pubblicazione skippata")
+                return {
+                    "status": "DRY_RUN",
+                    "slides_rendered": len(slide_paths),
+                    "caption_preview": content_dict.get("caption", "")[:200],
+                }
+
+            caption = content_dict.get("caption", "")
+            hashtags = content_dict.get("hashtags", [])
+            if hashtags:
+                caption = caption.rstrip() + "\n\n" + " ".join(f"#{h}" for h in hashtags)
+
+            result = _aio.run(publish_carousel(slide_paths, caption))
+            if result and result.success:
+                logger.info(f"Instagram: carosello pubblicato OK post_id={result.post_id}")
+                return {
+                    "status": "published",
+                    "post_id": result.post_id,
+                    "slides": len(slide_paths),
+                    "caption_preview": caption[:200],
+                }
+            else:
+                err = result.error if result else "unknown"
+                logger.error(f"Instagram: pubblicazione fallita — {err}")
+                return {"status": "ERROR", "message": err}
+
+    except Exception as e:
+        logger.error(f"_publish_instagram_carousel_sync error: {e}", exc_info=True)
+        return {"status": "ERROR", "message": str(e)}
+
+
+async def _scheduled_instagram_comments():
+    """Task schedulato: processa e risponde ai commenti recenti ogni ora."""
+    if not _instagram_available:
+        return
+    logger.info("Instagram: elaborazione commenti...")
+    try:
+        stats = await process_all_recent_posts(days=1, dry_run=False)
+        logger.info(f"Instagram commenti: {stats}")
+    except Exception as e:
+        logger.error(f"Scheduled Instagram comments error: {e}")
 
 
 def _fetch_and_classify_sync():
@@ -846,6 +971,93 @@ async def get_performance():
 async def get_trade_journal(limit: int = 20):
     journal = get_journal(limit)
     return {"count": len(journal), "entries": journal}
+
+
+# ─── Phase 8: Instagram endpoints ─────────────────────────────────────────────
+
+@app.post("/instagram/publish", summary="Pubblica carosello Instagram (trigger manuale)")
+async def instagram_publish_manual(background_tasks: BackgroundTasks, dry_run: bool = False):
+    """
+    Trigger manuale per la pubblicazione del carosello Instagram.
+    Legge la signals_cache.json, genera contenuto con Claude Haiku,
+    renderizza le slide e pubblica su Instagram Business Account.
+
+    Parametri:
+      dry_run=true  — genera e renderizza le slide ma non pubblica
+      dry_run=false — pubblica effettivamente (default)
+    """
+    if not _instagram_available:
+        return {
+            "status": "NOT_CONFIGURED",
+            "message": (
+                "Instagram non configurato. "
+                "Aggiungi IG_ACCESS_TOKEN e IG_BUSINESS_ACCOUNT_ID nel file .env "
+                "e riavvia il server."
+            ),
+        }
+
+    background_tasks.add_task(_publish_instagram_carousel_sync, dry_run)
+    return {
+        "status": "started",
+        "dry_run": dry_run,
+        "message": "Pubblicazione carosello avviata in background. Controlla i log.",
+        "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+    }
+
+
+@app.get("/instagram/status", summary="Stato Instagram integration")
+async def instagram_status():
+    """
+    Stato dell'integrazione Instagram: credenziali, info account, commenti risposti.
+    """
+    status: dict = {
+        "configured": _instagram_available,
+        "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+    }
+
+    if _instagram_available:
+        try:
+            from instagram_publisher import get_account_info
+            import asyncio as _aio
+            account = _aio.run(get_account_info())
+            status["account"] = account
+        except Exception as e:
+            status["account_error"] = str(e)
+
+        try:
+            from comment_handler import _load_replied
+            replied = _load_replied()
+            status["comments_replied_total"] = len(replied)
+        except Exception:
+            pass
+    else:
+        status["message"] = (
+            "Aggiungi IG_ACCESS_TOKEN e IG_BUSINESS_ACCOUNT_ID in .env per attivare."
+        )
+
+    return status
+
+
+@app.post("/instagram/comments", summary="Elabora commenti Instagram recenti")
+async def instagram_process_comments(days: int = 1, dry_run: bool = True):
+    """
+    Processa i commenti degli ultimi N giorni e genera risposte con Claude Haiku.
+    dry_run=True di default: non invia effettivamente le risposte.
+    """
+    if not _instagram_available:
+        return {"status": "NOT_CONFIGURED", "message": "Instagram non configurato."}
+    try:
+        stats = await process_all_recent_posts(days=days, dry_run=dry_run)
+        return {
+            "status": "ok",
+            "dry_run": dry_run,
+            "days_processed": days,
+            "stats": stats,
+        }
+    except Exception as e:
+        logger.error(f"instagram_process_comments error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 if __name__ == "__main__":

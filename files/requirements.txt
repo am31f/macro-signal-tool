@@ -29,6 +29,14 @@ aiohttp>=3.9.0
 # Per MacroSignalBot (comandi interattivi, opzionale):
 python-telegram-bot>=21.0
 
+# ── Instagram / Phase 8 ───────────────────────────────────────────────────────
+# Playwright per rendering HTML → PNG (slide carosello)
+# Dopo pip install, eseguire: playwright install chromium
+playwright>=1.44.0
+
+# Timezone support per APScheduler (carosello alle 09:00 CET)
+pytz>=2024.1
+
 # ── Utilities ─────────────────────────────────────────────────────────────────
 python-dotenv>=1.0.0
 python-dateutil>=2.9.0
