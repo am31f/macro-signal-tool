@@ -318,7 +318,10 @@ async def _publish_instagram_carousel_sync(dry_run: bool = False) -> dict:
             logger.info(f"Instagram: {len(slide_paths)} slide renderizzate")
 
             if not slide_paths:
-                return {"status": "ERROR", "message": "Rendering slide fallito"}
+                return {"status": "ERROR", "message": "Rendering slide fallito",
+                        "content_keys": list(content_dict.keys()),
+                        "pillow_renderer": os.environ.get("PILLOW_RENDERER", "not set"),
+                        "slide_renderer_module": str(render_carousel_slides)}
 
             if dry_run:
                 logger.info("Instagram: [DRY RUN] slide pronte, pubblicazione skippata")
@@ -1046,6 +1049,45 @@ async def instagram_publish_manual(background_tasks: BackgroundTasks, dry_run: b
         "message": "Pubblicazione carosello avviata in background. Controlla i log.",
         "timestamp": datetime.now(tz=timezone.utc).isoformat(),
     }
+
+
+@app.get("/instagram/render-test", summary="Testa il renderer slide con dati mock")
+async def instagram_render_test():
+    """Testa slide_renderer_pillow direttamente con dati mock per debug."""
+    import tempfile, traceback as _tb
+    try:
+        from slide_renderer_pillow import render_carousel_slides_pillow
+        mock = {
+            "signal_id": "render_test_001",
+            "eyebrow": "TEST · DEBUG",
+            "date_label": "03 Maggio 2026",
+            "hook_title": "Test rendering slide Kairós",
+            "hook_subtitle": "Verifica che Pillow funzioni correttamente su Railway",
+            "context_title": "Contesto di test",
+            "context_stats": [{"value": "OK", "label": "Pillow funziona"}],
+            "historical_title": "Storico test",
+            "historical_rows": [{"label": "Test", "value": "+100%", "positive": True}],
+            "sectors_title": "Settori test",
+            "bullish_sectors": "Tech, AI, Cloud",
+            "bearish_sectors": "Nessuno in test",
+            "cta_question": "Funziona tutto?",
+            "cta_body": "Se vedi questo, il renderer Pillow è ok.",
+            "cta_channel": "@karios_finance",
+            "source_label": "Test",
+            "caption": "test",
+            "hashtags": ["test"],
+        }
+        with tempfile.TemporaryDirectory(prefix="kairos_test_") as tmpdir:
+            from pathlib import Path as _P
+            slides = render_carousel_slides_pillow(mock, _P(tmpdir))
+            return {
+                "status": "ok",
+                "slides_rendered": len(slides),
+                "filenames": [_P(s).name for s in slides],
+                "pillow_renderer_env": os.environ.get("PILLOW_RENDERER", "not set"),
+            }
+    except Exception as e:
+        return {"status": "ERROR", "error": str(e), "traceback": _tb.format_exc()}
 
 
 @app.post("/instagram/publish-sync", summary="Pubblica carosello Instagram (sincrono, mostra errori)")
