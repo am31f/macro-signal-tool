@@ -169,6 +169,33 @@ def execute_signal(
 
     init_db(db_path)
 
+    # ── Controllo duplicati ────────────────────────────────────────────────────
+    # 1) Stesso signal_id già eseguito (stessa notizia, esecuzione multipla)
+    from portfolio_manager import get_open_positions
+    open_pos = get_open_positions(db_path)
+
+    if signal_id:
+        already_executed = [p for p in open_pos if p.get("signal_id") == signal_id]
+        if already_executed:
+            logger.info(
+                f"⚠️  Segnale '{signal_id}' già eseguito ({len(already_executed)} posizioni aperte) — skip duplicato"
+            )
+            return ExecutionResult(
+                signal_id=signal_id, headline=headline,
+                event_category=category, trade_type="DUPLICATE",
+                executed_at=executed_at,
+                positions_opened=[], positions_skipped=[],
+                total_capital_deployed_eur=0.0,
+                sizing_summary=sizing_result,
+                notes=f"DUPLICATE: signal_id '{signal_id}' già in portafoglio",
+            )
+
+    # 2) Stesso ticker+direzione già aperto (notizie diverse, stessa esposizione)
+    open_tickers = {
+        (p.get("ticker", ""), p.get("direction", "")): p
+        for p in open_pos
+    }
+
     for inst in instruments:
         ticker = inst.get("ticker", "")
         direction = inst.get("direction", "LONG")
@@ -189,6 +216,23 @@ def execute_signal(
                 "note": f"Strike hint: {inst.get('option_strike_hint','')}, Expiry: {inst.get('option_expiry_hint','')}",
             })
             logger.info(f"  ⚠️ Skip opzione {ticker} — non supportata in paper trading")
+            continue
+
+        # Stesso ticker+direzione già aperto da un'altra notizia → skip
+        existing = open_tickers.get((ticker, direction))
+        if existing:
+            positions_skipped.append({
+                "ticker": ticker,
+                "reason": (
+                    f"Esposizione duplicata: {direction} {ticker} già aperta "
+                    f"(signal_id={existing.get('signal_id','?')}, "
+                    f"entry={existing.get('entry_price','?')})"
+                ),
+            })
+            logger.info(
+                f"  ⚠️ Skip {direction} {ticker} — esposizione già presente "
+                f"da signal '{existing.get('signal_id','?')}'"
+            )
             continue
 
         inst_size_eur = total_size_eur * weight
