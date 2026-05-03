@@ -122,11 +122,12 @@ async def startup_event():
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         scheduler = AsyncIOScheduler()
+        # Ciclo completo ogni 3h: fetch news → classifica → pipeline segnali
         scheduler.add_job(
-            _scheduled_news_fetch,
+            _scheduled_full_cycle,
             "interval",
-            hours=4,
-            id="news_fetch",
+            hours=3,
+            id="full_cycle",
             replace_existing=True,
         )
         scheduler.add_job(
@@ -149,15 +150,29 @@ async def startup_event():
             )
             logger.info("APScheduler: digest email schedulato alle 8:00 ✅")
         scheduler.start()
-        logger.info("APScheduler avviato: news ogni 4h, prezzi ogni 15min ✅")
+        logger.info("APScheduler avviato: ciclo completo ogni 3h, prezzi ogni 15min ✅")
     except ImportError:
         logger.warning("APScheduler non installato — polling automatico disabilitato")
     except Exception as e:
         logger.error(f"Errore avvio scheduler: {e} — continuo comunque")
 
 
+async def _scheduled_full_cycle():
+    """Ciclo completo ogni 3h: fetch news → classifica → pipeline segnali."""
+    logger.info("⏰ Scheduled: ciclo completo (fetch + classify + pipeline)...")
+    try:
+        loop = asyncio.get_event_loop()
+        # Step 1: fetch + classifica
+        await loop.run_in_executor(None, _fetch_and_classify_sync)
+        logger.info("⏰ Scheduled: fetch+classify completato, avvio pipeline segnali...")
+        # Step 2: pipeline segnali in background (non bloccante)
+        loop.run_in_executor(None, lambda: _run_pipeline_sync(50))
+    except Exception as e:
+        logger.error(f"Scheduled full cycle error: {e}")
+
+
 async def _scheduled_news_fetch():
-    """Task schedulato: fetch + classifica news."""
+    """Task schedulato: fetch + classifica news (legacy, non più usato dallo scheduler)."""
     logger.info("⏰ Scheduled: fetch + classify news...")
     try:
         loop = asyncio.get_event_loop()
