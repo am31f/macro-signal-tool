@@ -1048,6 +1048,22 @@ async def instagram_publish_manual(background_tasks: BackgroundTasks, dry_run: b
     }
 
 
+@app.post("/instagram/publish-sync", summary="Pubblica carosello Instagram (sincrono, mostra errori)")
+async def instagram_publish_sync(dry_run: bool = True):
+    """
+    Versione sincrona di /instagram/publish: aspetta il risultato e lo restituisce
+    direttamente nella response. Utile per debug. Default dry_run=True per sicurezza.
+    """
+    if not _instagram_available:
+        return {"status": "NOT_CONFIGURED"}
+    try:
+        result = await _publish_instagram_carousel_sync(dry_run)
+        return result
+    except Exception as e:
+        import traceback as _tb
+        return {"status": "EXCEPTION", "error": str(e), "traceback": _tb.format_exc()}
+
+
 @app.get("/instagram/status", summary="Stato Instagram integration")
 async def instagram_status():
     """
