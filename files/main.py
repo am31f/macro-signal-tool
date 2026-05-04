@@ -1224,3 +1224,34 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     logger.info(f"Avvio MacroSignalTool API su porta {port}")
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+
+
+@app.post("/telegram/test", summary="Invia messaggio di test su Telegram")
+async def telegram_test():
+    """Verifica che il bot Telegram sia configurato e funzionante."""
+    import os
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+    if not token or not chat_id:
+        return {"status": "NOT_CONFIGURED", "token_set": bool(token), "chat_id_set": bool(chat_id)}
+    try:
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            # Prima verifica il bot con getMe
+            async with session.get(f"https://api.telegram.org/bot{token}/getMe") as r:
+                me = await r.json()
+            if not me.get("ok"):
+                return {"status": "INVALID_TOKEN", "detail": me}
+            # Poi invia messaggio di test
+            msg = {"chat_id": chat_id, "text": "✅ Kairós MacroSignal — test connessione Telegram OK", "parse_mode": "HTML"}
+            async with session.post(f"https://api.telegram.org/bot{token}/sendMessage", json=msg) as r:
+                result = await r.json()
+            return {
+                "status": "OK" if result.get("ok") else "ERROR",
+                "bot_name": me.get("result", {}).get("username"),
+                "chat_id": chat_id,
+                "message_sent": result.get("ok"),
+                "detail": result if not result.get("ok") else None,
+            }
+    except Exception as e:
+        return {"status": "EXCEPTION", "error": str(e)}
