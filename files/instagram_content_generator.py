@@ -78,7 +78,7 @@ class IGCarouselContent:
     # Slide 5 — CTA
     cta_question: str     # es. "Vuoi i segnali operativi?"
     cta_body: str         # 1-2 righe
-    cta_channel: str      # es. "@kairos.macro su Telegram"
+    cta_channel: str      # es. "@Kairós su Telegram"
 
     # Caption e hashtag
     caption: str
@@ -165,9 +165,9 @@ Genera il contenuto per un carosello Instagram di 5 slide in formato JSON ESATTO
   "sectors_title": "Cosa tenere d'occhio",
   "bullish_sectors": "Energia integrata, produttori petrolio USA, oro",
   "bearish_sectors": "Compagnie aeree, shipping, manifattura energy-intensive",
-  "cta_question": "Vuoi i segnali operativi completi?",
-  "cta_body": "Ticker, stop loss, target e sizing in tempo reale — solo su Telegram.",
-  "cta_channel": "Cerca @kairos.macro su Telegram",
+  "cta_question": "Ogni mattina analizziamo l'evento che muoverà i mercati",
+  "cta_body": "Su Telegram analizziamo anche i titoli azionari e gli strumenti potenzialmente impattati dall'evento del giorno.",
+  "cta_channel": "@Kairós su Telegram",
   "caption": "Caption Instagram di 150-200 parole in italiano. Tono editoriale Kairós. Inizia con la notizia, spiega perché conta, accenna ai settori impattati. Chiudi con invito a seguire per approfondire. Nessun consiglio di acquisto. Nessuna emoji. Separatori di paragrafo con doppio a capo.",
   "hashtags": ["macro", "finanza", "mercati", "geopolitica", "trading", "investimenti", "economia", "borsa", "notizie", "kairos"]
 }}
@@ -211,9 +211,9 @@ Adatta tutti i campi alla notizia specifica. Sii preciso e informativo. Rispondi
             sectors_title=data.get("sectors_title", "Cosa tenere d'occhio"),
             bullish_sectors=data.get("bullish_sectors", bullish_names),
             bearish_sectors=data.get("bearish_sectors", bearish_names),
-            cta_question=data.get("cta_question", "Vuoi i segnali operativi?"),
-            cta_body=data.get("cta_body", "Segnali completi su Telegram."),
-            cta_channel=data.get("cta_channel", "@kairos.macro"),
+            cta_question=data.get("cta_question", "Ogni mattina analizziamo l'evento che muoverà i mercati"),
+            cta_body=data.get("cta_body", "Su Telegram analizziamo anche i titoli azionari e gli strumenti potenzialmente impattati."),
+            cta_channel=data.get("cta_channel", "@Kairós su Telegram"),
             caption=data.get("caption", ""),
             hashtags=data.get("hashtags", []),
             source_label=source_label,
@@ -273,9 +273,9 @@ def _mock_content(signal: dict) -> IGCarouselContent:
         sectors_title="Cosa tenere d'occhio",
         bullish_sectors="Energia, oro, materie prime",
         bearish_sectors="Trasporti, manifattura, consumer",
-        cta_question="Vuoi i segnali operativi completi?",
-        cta_body="Ticker, stop loss, target e sizing in tempo reale — solo su Telegram.",
-        cta_channel="Cerca @kairos.macro su Telegram",
+        cta_question="Ogni mattina analizziamo l'evento che muoverà i mercati",
+        cta_body="Su Telegram analizziamo anche i titoli azionari e gli strumenti potenzialmente impattati dall'evento del giorno.",
+        cta_channel="@Kairós su Telegram",
         caption=f"Analisi macro: {headline}\n\nQuesta notizia impatta i mercati attraverso una serie di canali interconnessi. Il nostro sistema di analisi ha identificato i settori e gli strumenti più esposti.\n\nSeguici per il contesto completo. I segnali operativi sono riservati al canale Telegram.\n\nContenuto informativo — non è consulenza finanziaria.",
         hashtags=["macro", "finanza", "mercati", "economia", "trading", "investimenti", "borsa", "geopolitica", "kairos", "analisi"],
         source_label="Fonti pubbliche",
@@ -398,12 +398,20 @@ def _run_test():
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Instagram Content Generator — Kairós")
+    import argparse
+    parser = argparse.ArgumentParser(description="Instagram Content Generator - Kairos")
     parser.add_argument("--test", action="store_true", help="Test generazione contenuto")
-    parser.add_argument("--signal-id", type=str, help="ID segnale specifico da usare")
+    parser.add_argument("--cache", default="signals_cache.json", help="Path cache segnali")
     args = parser.parse_args()
 
+    logging.basicConfig(level=logging.INFO)
     if args.test:
-        _run_test()
-    else:
-        parser.print_help()
+        import asyncio
+        content = asyncio.run(generate_carousel_content(args.cache))
+        if content:
+            print(f"\nContenuto generato:")
+            print(f"  Hook: {content.hook_title}")
+            print(f"  Eyebrow: {content.eyebrow}")
+            print(f"  CTA channel: {content.cta_channel}")
+        else:
+            print("Generazione fallita")
