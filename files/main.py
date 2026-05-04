@@ -1255,3 +1255,33 @@ async def telegram_test():
             }
     except Exception as e:
         return {"status": "EXCEPTION", "error": str(e)}
+
+
+@app.post("/instagram/publish-custom", summary="Pubblica carosello Instagram con contenuto custom")
+async def instagram_publish_custom(content: dict, dry_run: bool = False):
+    """
+    Pubblica un carosello Instagram con contenuto completamente custom.
+    Passa un JSON con i campi IGCarouselContent direttamente.
+    """
+    if not _instagram_available:
+        return {"status": "NOT_CONFIGURED"}
+    import tempfile
+    try:
+        with tempfile.TemporaryDirectory(prefix="kairos_ig_custom_") as tmpdir:
+            slide_paths = render_carousel_slides(content, tmpdir)
+            if not slide_paths:
+                return {"status": "ERROR", "message": "Rendering slide fallito"}
+            if dry_run:
+                return {"status": "DRY_RUN", "slides_rendered": len(slide_paths)}
+            caption = content.get("caption", "")
+            hashtags = content.get("hashtags", [])
+            if hashtags:
+                caption = caption.rstrip() + "\n\n" + " ".join(f"#{h}" for h in hashtags)
+            result = await publish_carousel(slide_paths, caption)
+            if result and result.success:
+                return {"status": "published", "post_id": result.post_id, "slides": len(slide_paths)}
+            else:
+                return {"status": "ERROR", "message": result.error if result else "unknown"}
+    except Exception as e:
+        import traceback as _tb
+        return {"status": "EXCEPTION", "error": str(e), "traceback": _tb.format_exc()}
