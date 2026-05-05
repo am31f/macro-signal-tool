@@ -66,11 +66,11 @@ def _load_font(name: str, size: int) -> ImageFont.FreeTypeFont:
 def _get_fonts():
     return {
         "eyebrow":   _load_font("JetBrainsMono-Regular.ttf", 28),
-        "headline":  _load_font("CormorantGaramond-SemiBold.ttf", 96),
-        "headline_sm": _load_font("CormorantGaramond-SemiBold.ttf", 72),
-        "subline":   _load_font("InterTight-Regular.ttf", 38),
-        "logo":      _load_font("CormorantGaramond-SemiBold.ttf", 44),
-        "tagline":   _load_font("InterTight-Regular.ttf", 26),
+        "headline":  _load_font("CormorantGaramond-Medium.ttf", 96),
+        "headline_sm": _load_font("CormorantGaramond-Medium.ttf", 72),
+        "subline":   _load_font("Inter-Regular.ttf", 38),
+        "logo":      _load_font("CormorantGaramond-Medium.ttf", 44),
+        "tagline":   _load_font("Inter-Regular.ttf", 26),
     }
 
 

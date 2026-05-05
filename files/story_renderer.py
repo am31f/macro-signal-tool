@@ -58,9 +58,9 @@ def _get_fonts():
         "headline":     _load_font("CormorantGaramond-Medium.ttf", 128),
         "headline_sm":  _load_font("CormorantGaramond-Medium.ttf", 100),
         "headline_xs":  _load_font("CormorantGaramond-Medium.ttf", 80),
-        "subline":      _load_font("InterTight-Regular.ttf", 44),
+        "subline":      _load_font("Inter-Regular.ttf", 44),
         "logo":         _load_font("CormorantGaramond-Medium.ttf", 56),
-        "tagline":      _load_font("InterTight-Regular.ttf", 30),
+        "tagline":      _load_font("Inter-Regular.ttf", 30),
     }
 
 
