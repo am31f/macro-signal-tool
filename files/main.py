@@ -1358,6 +1358,32 @@ async def instagram_publish_custom(content: dict, dry_run: bool = False):
         return {"status": "EXCEPTION", "error": str(e), "traceback": _tb.format_exc()}
 
 
+@app.get("/instagram/afternoon-test", summary="Anteprima post pomeridiano (dry run, GET)")
+async def instagram_afternoon_test(theme: Optional[str] = None):
+    """Anteprima del post pomeridiano senza pubblicare — apri nel browser."""
+    if not _afternoon_available:
+        return {"status": "NOT_CONFIGURED", "message": "afternoon_post_generator non disponibile"}
+    try:
+        cache_path = str(DATA_DIR / "signals_cache.json")
+        content = generate_afternoon_post(
+            signals_cache_path=cache_path if Path(cache_path).exists() else None,
+            force_theme=theme,
+        )
+        return {
+            "status": "DRY_RUN",
+            "theme": content.theme,
+            "eyebrow": content.eyebrow,
+            "headline": content.headline,
+            "subline": content.subline,
+            "accent_word": content.accent_word,
+            "caption_preview": content.caption[:400],
+            "hashtags": content.hashtags,
+        }
+    except Exception as e:
+        import traceback as _tb
+        return {"status": "EXCEPTION", "error": str(e), "traceback": _tb.format_exc()}
+
+
 @app.post("/instagram/publish-afternoon", summary="Pubblica post pomeridiano (trigger manuale)")
 async def instagram_publish_afternoon(
     dry_run: bool = False,
