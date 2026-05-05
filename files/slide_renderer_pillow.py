@@ -275,48 +275,49 @@ def render_slide3(c, out, fonts):
         y += 62
     y += 16
 
-    # Righe storiche — layout verticalmente centrato
+    # Righe storiche — riempiono tutto lo spazio disponibile fino a H-6
     rows = c.get("historical_rows", [])
     if isinstance(rows, list):
         rows = rows[:5]
-        row_h = 102  # altezza riga aumentata per riempire lo spazio
-        total_rows_h = len(rows) * row_h
-        # Centra verticalmente il blocco righe tra y e H-80
-        available = (H - 80) - y
-        if total_rows_h < available:
-            y += (available - total_rows_h) // 2
+        n = len(rows)
+        if n > 0:
+            # Calcola altezza riga in modo che le righe riempiano esattamente lo spazio
+            bottom = H - 6
+            available = bottom - y
+            row_h = available // n  # ogni riga occupa esattamente 1/n dello spazio
 
-        for row in rows:
-            if isinstance(row, dict):
-                label    = str(row.get("label", ""))
-                value    = str(row.get("value", ""))
-                positive = row.get("positive", True)
-            else:
-                label, value, positive = str(row), "", True
+            for i, row in enumerate(rows):
+                if isinstance(row, dict):
+                    label    = str(row.get("label", ""))
+                    value    = str(row.get("value", ""))
+                    positive = row.get("positive", True)
+                else:
+                    label, value, positive = str(row), "", True
 
-            val_color = POS if positive else NEG
-            bg_fill   = POS_BG if positive else NEG_BG
+                val_color = POS if positive else NEG
+                bg_fill   = POS_BG if positive else NEG_BG
 
-            # Sfondo riga
-            draw.rectangle([PAD, y, W-PAD, y+row_h-8], fill=bg_fill)
-            # Striscia laterale colorata
-            draw.rectangle([PAD, y, PAD+6, y+row_h-8], fill=val_color)
+                ry = y + i * row_h
+                ry_end = ry + row_h - 4  # 4px gap tra righe
 
-            # Label — più grande per riempire la riga
-            draw.text((PAD+20, y + 18), label, font=fonts["sans_30"], fill=PAPER)
+                # Sfondo riga — pieno
+                draw.rectangle([PAD, ry, W-PAD, ry_end], fill=bg_fill)
+                # Striscia laterale
+                draw.rectangle([PAD, ry, PAD+6, ry_end], fill=val_color)
 
-            # Value — grande, PAPER su colore bg, massimo contrasto
-            vw = _text_w(draw, value, fonts["serif_36"])
-            draw.text((W - PAD - vw - 16, y + 30), value, font=fonts["serif_36"], fill=val_color)
+                # Centra verticalmente testo nella riga
+                mid = ry + row_h // 2
 
-            # Linea separatrice tra label e value
-            draw.line([(W - PAD - vw - 30, y + 12), (W - PAD - vw - 30, y + row_h - 18)],
-                      fill=val_color, width=1)
+                # Label a sinistra — dimensione adattiva
+                lbl_font = fonts["sans_30"] if row_h > 90 else fonts["sans_26"]
+                lh = _line_h(draw, lbl_font)
+                draw.text((PAD+20, mid - lh // 2), label, font=lbl_font, fill=PAPER)
 
-            y += row_h
-
-            if y > H - 80:
-                break
+                # Value a destra — serif grande, colore vivace per massimo contrasto
+                val_font = fonts["serif_52"] if row_h > 90 else fonts["serif_44"]
+                vw = _text_w(draw, value, val_font)
+                vh = _line_h(draw, val_font)
+                draw.text((W - PAD - vw - 16, mid - vh // 2), value, font=val_font, fill=val_color)
 
     img.save(str(out), "PNG")
 
@@ -346,33 +347,37 @@ def render_slide4(c, out, fonts):
         y += 62
     y += 16
 
-    # Calcola spazio disponibile e dividi in due blocchi uguali
-    space_available = H - 80 - y
-    block_h = space_available // 2 - 12
+    # I due blocchi riempiono TUTTO lo spazio fino alla riga disclaimer (H-58)
+    # Gap di 12px tra i due blocchi
+    DISC_Y = H - 58        # y della riga disclaimer
+    GAP = 12               # gap tra blocco verde e blocco rosso
+    block_h = (DISC_Y - y - GAP) // 2  # ogni blocco prende metà dello spazio
+
+    y_bull = y
+    y_bear = y + block_h + GAP
 
     # Bullish block — box pieno con sfondo verde scuro
     bullish = c.get("bullish_sectors", "")
     if bullish:
-        draw.rectangle([PAD, y, W-PAD, y+block_h], fill=POS_BG)
-        draw.rectangle([PAD, y, PAD+6, y+block_h], fill=POS)
-        draw.text((PAD+18, y+16), "▲  POTENZIALE BENEFICIO", font=fonts["mono_16"], fill=POS)
-        draw.line([(PAD+18, y+44), (W-PAD-18, y+44)], fill=POS, width=1)
+        draw.rectangle([PAD, y_bull, W-PAD, y_bull+block_h], fill=POS_BG)
+        draw.rectangle([PAD, y_bull, PAD+6, y_bull+block_h], fill=POS)
+        draw.text((PAD+18, y_bull+16), "▲  POTENZIALE BENEFICIO", font=fonts["mono_16"], fill=POS)
+        draw.line([(PAD+18, y_bull+44), (W-PAD-18, y_bull+44)], fill=POS, width=1)
         bl_font = fonts["sans_30"]
-        by = y + 56
+        by = y_bull + 56
         for line in _wrap(draw, bullish, bl_font, W - PAD*2 - 32)[:4]:
             draw.text((PAD+18, by), line, font=bl_font, fill=PAPER)
             by += 38
-        y += block_h + 16
 
     # Bearish block — box pieno con sfondo rosso scuro
     bearish = c.get("bearish_sectors", "")
     if bearish:
-        draw.rectangle([PAD, y, W-PAD, y+block_h], fill=NEG_BG)
-        draw.rectangle([PAD, y, PAD+6, y+block_h], fill=NEG)
-        draw.text((PAD+18, y+16), "▼  POTENZIALE PRESSIONE", font=fonts["mono_16"], fill=NEG)
-        draw.line([(PAD+18, y+44), (W-PAD-18, y+44)], fill=NEG, width=1)
+        draw.rectangle([PAD, y_bear, W-PAD, y_bear+block_h], fill=NEG_BG)
+        draw.rectangle([PAD, y_bear, PAD+6, y_bear+block_h], fill=NEG)
+        draw.text((PAD+18, y_bear+16), "▼  POTENZIALE PRESSIONE", font=fonts["mono_16"], fill=NEG)
+        draw.line([(PAD+18, y_bear+44), (W-PAD-18, y_bear+44)], fill=NEG, width=1)
         bl_font = fonts["sans_30"]
-        by = y + 56
+        by = y_bear + 56
         for line in _wrap(draw, bearish, bl_font, W - PAD*2 - 32)[:4]:
             draw.text((PAD+18, by), line, font=bl_font, fill=PAPER)
             by += 38
