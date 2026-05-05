@@ -281,7 +281,14 @@ Genera un post Instagram con questo formato JSON esatto (nessun testo aggiuntivo
                 raw = raw[4:]
             raw = raw.strip()
 
-        return json.loads(raw)
+        parsed = json.loads(raw)
+        # Sanifica hashtag: rimuovi spazi, converti in minuscolo
+        if "hashtags" in parsed:
+            parsed["hashtags"] = [
+                h.lower().replace(" ", "").replace("-", "")
+                for h in parsed["hashtags"] if h
+            ]
+        return parsed
 
     except Exception as e:
         logger.warning(f"afternoon_post_generator: Haiku fallito ({e}), uso fallback")
