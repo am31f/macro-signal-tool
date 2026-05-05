@@ -208,14 +208,8 @@ def render_story(content, output_dir: str) -> str:
     logo_y   = H - 220
     line_y   = H - 290
 
-    # Centra il blocco testo esattamente tra il separatore e la linea logo
-    avail_top    = sep_y + 60
-    avail_bottom = line_y - 60
-    avail_h      = avail_bottom - avail_top
-
-    # Posiziona a 1/5 dall'alto — testo nella parte alta della canvas
-    headline_y = avail_top + (avail_h - block_h) // 5
-    headline_y = max(avail_top, headline_y)
+    # Posizione fissa headline: subito sotto il separatore
+    headline_y = sep_y + 80
 
     headline_end_y = _draw_headline_accent(
         draw, headline, accent, hl_font, headline_y, CONTENT_W, line_gap
