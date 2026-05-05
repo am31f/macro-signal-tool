@@ -55,11 +55,11 @@ def _load_font(name: str, size: int) -> ImageFont.FreeTypeFont:
 def _get_fonts():
     return {
         "eyebrow":      _load_font("JetBrainsMono-Regular.ttf", 34),
-        "headline":     _load_font("CormorantGaramond-SemiBold.ttf", 128),
-        "headline_sm":  _load_font("CormorantGaramond-SemiBold.ttf", 100),
-        "headline_xs":  _load_font("CormorantGaramond-SemiBold.ttf", 80),
+        "headline":     _load_font("CormorantGaramond-Medium.ttf", 128),
+        "headline_sm":  _load_font("CormorantGaramond-Medium.ttf", 100),
+        "headline_xs":  _load_font("CormorantGaramond-Medium.ttf", 80),
         "subline":      _load_font("InterTight-Regular.ttf", 44),
-        "logo":         _load_font("CormorantGaramond-SemiBold.ttf", 56),
+        "logo":         _load_font("CormorantGaramond-Medium.ttf", 56),
         "tagline":      _load_font("InterTight-Regular.ttf", 30),
     }
 
@@ -195,25 +195,25 @@ def render_story(content, output_dir: str) -> str:
         hl_font   = fonts["headline_xs"]
         line_gap  = 16
 
-    # Calcola altezza blocco headline per centrare verticalmente nello spazio aureo
+    # Calcola altezza blocco headline + subline
     hl_lines    = _wrap_text(headline, hl_font, CONTENT_W, draw)
     hl_total_h  = sum(_text_h(draw, l, hl_font) + line_gap for l in hl_lines)
 
-    # Subline altezza
     sub_lines   = _wrap_text(subline, fonts["subline"], CONTENT_W, draw) if subline else []
-    sub_total_h = sum(_text_h(draw, l, fonts["subline"]) + 14 for l in sub_lines) + 48 if sub_lines else 0
+    sub_total_h = sum(_text_h(draw, l, fonts["subline"]) + 14 for l in sub_lines) + 60 if sub_lines else 0
 
-    # Blocco testo totale (headline + gap + subline)
     block_h = hl_total_h + sub_total_h
 
-    # Posiziona il blocco nella sezione aureo-superiore (tra y=400 e y=1400)
-    content_zone_top    = 400
-    content_zone_bottom = 1400
-    content_zone_h      = content_zone_bottom - content_zone_top
-    headline_y          = content_zone_top + (content_zone_h - block_h) // 2
+    # Spazio disponibile tra separatore e riga logo
+    logo_y        = H - 270
+    line_y        = H - 340
+    avail_top     = sep_y + 60
+    avail_bottom  = line_y - 40
+    avail_h       = avail_bottom - avail_top
 
-    # Assicura che non vada sopra il separatore
-    headline_y = max(sep_y + 80, headline_y)
+    # Centra il blocco testo nello spazio disponibile
+    headline_y = avail_top + (avail_h - block_h) // 2
+    headline_y = max(avail_top, headline_y)
 
     headline_end_y = _draw_headline_accent(
         draw, headline, accent, hl_font, headline_y, CONTENT_W, line_gap
@@ -225,10 +225,10 @@ def render_story(content, output_dir: str) -> str:
         _draw_centered(draw, subline, fonts["subline"], sub_y, INK_50, CONTENT_W, line_gap=14)
 
     # ── Linea orizzontale sottile sopra logo ──────────────────────────────────
-    draw.rectangle([(MARGIN, H - 340), (W - MARGIN, H - 339)], fill=INK_15)
+    draw.rectangle([(MARGIN, line_y), (W - MARGIN, line_y + 1)], fill=INK_15)
 
     # ── Tre punti decorativi gold ─────────────────────────────────────────────
-    dot_y = H - 310
+    dot_y = line_y + 30
     for i, dx in enumerate([-18, 0, 18]):
         dot_x = W // 2 + dx
         r = 4
@@ -240,7 +240,6 @@ def render_story(content, output_dir: str) -> str:
     # ── Logo KAIRÓS in Ink ────────────────────────────────────────────────────
     logo_text = "KAIRÓS"
     logo_w    = _text_w(draw, logo_text, fonts["logo"])
-    logo_y    = H - 270
     draw.text(((W - logo_w) // 2, logo_y), logo_text, font=fonts["logo"], fill=INK)
 
     # ── Tagline ───────────────────────────────────────────────────────────────
