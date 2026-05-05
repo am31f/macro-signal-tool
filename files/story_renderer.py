@@ -213,8 +213,8 @@ def render_story(content, output_dir: str) -> str:
     avail_bottom = line_y - 60
     avail_h      = avail_bottom - avail_top
 
-    # Posiziona a un terzo dall'alto — regola tipografica per formati verticali
-    headline_y = avail_top + (avail_h - block_h) // 3
+    # Posiziona a 1/5 dall'alto — testo nella parte alta della canvas
+    headline_y = avail_top + (avail_h - block_h) // 5
     headline_y = max(avail_top, headline_y)
 
     headline_end_y = _draw_headline_accent(
