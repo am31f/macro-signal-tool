@@ -115,7 +115,7 @@ def _draw_headline_with_accent(draw: ImageDraw.ImageDraw, headline: str, accent_
     Se accent_word è vuota, disegna tutto in PAPER.
     """
     if not accent_word or accent_word.lower() not in headline.lower():
-        return _draw_text_centered(draw, headline, font, y, C_PAPER, max_width)
+        return _draw_text_centered(draw, headline, font, y, C_INK, max_width)
 
     lines = _wrap_text(headline, font, max_width, draw)
     line_h = None
@@ -128,21 +128,18 @@ def _draw_headline_with_accent(draw: ImageDraw.ImageDraw, headline: str, accent_
             line_h = lh
         x_start = (W - lw) // 2
 
-        # Controlla se questa riga contiene la parola accentata
         lower_line = line.lower()
         lower_accent = accent_word.lower()
 
         if lower_accent in lower_line:
-            # Trova la posizione della parola nella riga
             idx = lower_line.find(lower_accent)
             before = line[:idx]
             accent_part = line[idx:idx+len(accent_word)]
             after = line[idx+len(accent_word):]
 
-            # Misura le parti
             x = x_start
             if before:
-                draw.text((x, y), before, font=font, fill=C_PAPER)
+                draw.text((x, y), before, font=font, fill=C_INK)
                 b_bbox = draw.textbbox((0, 0), before, font=font)
                 x += b_bbox[2] - b_bbox[0]
 
@@ -151,9 +148,9 @@ def _draw_headline_with_accent(draw: ImageDraw.ImageDraw, headline: str, accent_
             x += a_bbox[2] - a_bbox[0]
 
             if after:
-                draw.text((x, y), after, font=font, fill=C_PAPER)
+                draw.text((x, y), after, font=font, fill=C_INK)
         else:
-            draw.text((x_start, y), line, font=font, fill=C_PAPER)
+            draw.text((x_start, y), line, font=font, fill=C_INK)
 
         y += lh + 14
 
@@ -186,64 +183,67 @@ def render_afternoon_post(content, output_dir: str) -> str:
 
     fonts = _get_fonts()
 
-    # ── Canvas ────────────────────────────────────────────────────────────────
-    img  = Image.new("RGB", (W, H), C_INK)
+    # ── Canvas Paper (sfondo crema, leggibile) ────────────────────────────────
+    img  = Image.new("RGB", (W, H), C_PAPER)
     draw = ImageDraw.Draw(img)
 
-    MARGIN = 80
+    MARGIN    = 80
     CONTENT_W = W - MARGIN * 2
 
-    # ── Linea oro in cima (brand mark) ────────────────────────────────────────
-    draw.rectangle([(0, 0), (W, 5)], fill=C_GOLD)
+    # ── Linea oro in cima ────────────────────────────────────────────────────
+    draw.rectangle([(0, 0), (W, 6)], fill=C_GOLD)
 
     # ── Eyebrow label ─────────────────────────────────────────────────────────
     eyebrow_y = 80
     eyebrow_text = eyebrow.upper()
     eb_bbox = draw.textbbox((0, 0), eyebrow_text, font=fonts["eyebrow"])
     eb_w = eb_bbox[2] - eb_bbox[0]
-    draw.text(((W - eb_w) // 2, eyebrow_y), eyebrow_text, font=fonts["eyebrow"], fill=C_GOLD_SOFT)
+    draw.text(((W - eb_w) // 2, eyebrow_y), eyebrow_text, font=fonts["eyebrow"], fill=C_GOLD)
 
-    # ── Linea separatore sottile sotto eyebrow ────────────────────────────────
-    sep_y = eyebrow_y + 48
-    draw.rectangle([(W//2 - 40, sep_y), (W//2 + 40, sep_y + 1)], fill=C_INK_50)
+    # ── Linea separatore gold sotto eyebrow ──────────────────────────────────
+    sep_y = eyebrow_y + 52
+    draw.rectangle([(W//2 - 50, sep_y), (W//2 + 50, sep_y + 2)], fill=C_GOLD)
 
-    # ── Headline (grande, centrata, con accento gold) ─────────────────────────
-    # Scegli dimensione font in base alla lunghezza
+    # ── Headline — posizione fissa subito sotto il separatore ─────────────────
     hl_font = fonts["headline"] if len(headline) <= 35 else fonts["headline_sm"]
+    headline_y = sep_y + 80
 
-    headline_y = H // 2 - 160
     headline_end_y = _draw_headline_with_accent(
         draw, headline, accent, hl_font, headline_y, CONTENT_W
     )
 
     # ── Subline ───────────────────────────────────────────────────────────────
     if subline:
-        sub_y = headline_end_y + 28
-        _draw_text_centered(draw, subline, fonts["subline"], sub_y, C_INK_15, CONTENT_W)
+        sub_y = headline_end_y + 36
+        _draw_text_centered(draw, subline, fonts["subline"], sub_y, C_INK_50, CONTENT_W)
 
-    # ── Decorazione: tre punti gold ───────────────────────────────────────────
-    dot_y = H - 200
+    # ── Linea separatrice sopra logo ──────────────────────────────────────────
+    line_y = H - 210
+    draw.rectangle([(MARGIN, line_y), (W - MARGIN, line_y + 1)], fill=C_INK_15)
+
+    # ── Tre punti decorativi ──────────────────────────────────────────────────
+    dot_y = line_y + 28
     for i, dx in enumerate([-16, 0, 16]):
         dot_x = W // 2 + dx
-        r = 3
+        r = 4
         draw.ellipse([(dot_x - r, dot_y - r), (dot_x + r, dot_y + r)],
-                     fill=C_GOLD if i == 1 else C_INK_50)
+                     fill=C_GOLD if i == 1 else C_INK_15)
 
-    # ── Logo Kairós in basso ──────────────────────────────────────────────────
+    # ── Logo Kairós in Ink ────────────────────────────────────────────────────
     logo_text = "KAIRÓS"
     logo_bbox = draw.textbbox((0, 0), logo_text, font=fonts["logo"])
-    logo_w = logo_bbox[2] - logo_bbox[0]
-    logo_y = H - 155
-    draw.text(((W - logo_w) // 2, logo_y), logo_text, font=fonts["logo"], fill=C_PAPER)
+    logo_w    = logo_bbox[2] - logo_bbox[0]
+    logo_y    = H - 165
+    draw.text(((W - logo_w) // 2, logo_y), logo_text, font=fonts["logo"], fill=C_INK)
 
     # ── Tagline ───────────────────────────────────────────────────────────────
     tagline = "We don't predict the market. We mark the moment."
     tl_bbox = draw.textbbox((0, 0), tagline, font=fonts["tagline"])
-    tl_w = tl_bbox[2] - tl_bbox[0]
-    draw.text(((W - tl_w) // 2, logo_y + 56), tagline, font=fonts["tagline"], fill=C_INK_50)
+    tl_w    = tl_bbox[2] - tl_bbox[0]
+    draw.text(((W - tl_w) // 2, logo_y + 58), tagline, font=fonts["tagline"], fill=C_INK_50)
 
     # ── Linea oro in fondo ────────────────────────────────────────────────────
-    draw.rectangle([(0, H - 5), (W, H)], fill=C_GOLD)
+    draw.rectangle([(0, H - 6), (W, H)], fill=C_GOLD)
 
     # ── Salva ─────────────────────────────────────────────────────────────────
     filename = f"afternoon_post_{theme.lower()}.png"
