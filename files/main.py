@@ -128,6 +128,11 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 _latest_signals: list = []
 _latest_pipeline_output: dict = {}
 
+# Stato Instagram (persiste in memoria tra le richieste)
+_ig_last_post_id: Optional[str] = None
+_ig_last_post_at: Optional[str] = None
+_ig_last_error: Optional[str] = None
+
 # ─── App FastAPI ──────────────────────────────────────────────────────────────
 
 app = FastAPI(
@@ -290,6 +295,7 @@ async def _publish_instagram_carousel_sync(dry_run: bool = False) -> dict:
     Flusso di pubblicazione carosello (async).
     Usato sia dallo scheduler che dall'endpoint manuale.
     """
+    global _ig_last_post_id, _ig_last_post_at, _ig_last_error
     import tempfile
 
     try:
@@ -338,6 +344,9 @@ async def _publish_instagram_carousel_sync(dry_run: bool = False) -> dict:
 
             result = await publish_carousel(slide_paths, caption)
             if result and result.success:
+                _ig_last_post_id = result.post_id
+                _ig_last_post_at = datetime.now(tz=timezone.utc).isoformat()
+                _ig_last_error = None
                 logger.info(f"Instagram: carosello pubblicato OK post_id={result.post_id}")
                 return {
                     "status": "published",
@@ -347,10 +356,12 @@ async def _publish_instagram_carousel_sync(dry_run: bool = False) -> dict:
                 }
             else:
                 err = result.error if result else "unknown"
+                _ig_last_error = err
                 logger.error(f"Instagram: pubblicazione fallita — {err}")
                 return {"status": "ERROR", "message": err}
 
     except Exception as e:
+        _ig_last_error = str(e)
         logger.error(f"_publish_instagram_carousel_sync error: {e}", exc_info=True)
         return {"status": "ERROR", "message": str(e)}
 
@@ -478,11 +489,17 @@ async def news_debug():
         latest = conn.execute(
             "SELECT headline, source, timestamp_utc, classified, materiality_score FROM news ORDER BY timestamp_unix DESC LIMIT 10"
         ).fetchall()
+        # last_fetch_at: timestamp dell'ultima news inserita nel DB
+        last_fetch_row = conn.execute(
+            "SELECT timestamp_utc FROM news ORDER BY timestamp_unix DESC LIMIT 1"
+        ).fetchone()
+        last_fetch_at = last_fetch_row[0] if last_fetch_row else None
         return {
             "db_path": str(db_path),
             "total_news": total,
             "classified": classified_count,
             "unclassified": unclassified_count,
+            "last_fetch_at": last_fetch_at,
             "latest_10": [
                 {"headline": r[0][:80], "source": r[1], "date": r[2][:10],
                  "classified": bool(r[3]), "materiality": r[4]}
@@ -605,9 +622,9 @@ def _run_pipeline_sync(limit: int):
                         "trade_type":        es["trade_structure"].get("trade_type", "–"),
                     }
                     try:
-                        asyncio.run(_telegram.send_signal_alert(signal_for_alert))
-                    except Exception:
-                        pass
+                        asyncio.ensure_future(_telegram.send_signal_alert(signal_for_alert))
+                    except Exception as tg_err:
+                        logger.error(f"Telegram alert error: {tg_err}")
 
     except Exception as e:
         logger.error(f"_run_pipeline_sync error: {e}", exc_info=True)
@@ -1171,6 +1188,9 @@ async def instagram_status():
         status: dict = {
             "configured": _instagram_available,
             "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+            "last_post_id": _ig_last_post_id,
+            "last_post_at": _ig_last_post_at,
+            "last_error": _ig_last_error,
         }
 
         if _instagram_available:
