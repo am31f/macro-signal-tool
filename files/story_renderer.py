@@ -205,14 +205,15 @@ def render_story(content, output_dir: str) -> str:
     block_h = hl_total_h + sub_total_h
 
     # Spazio disponibile tra separatore e riga logo
-    logo_y        = H - 270
-    line_y        = H - 340
-    avail_top     = sep_y + 60
-    avail_bottom  = line_y - 40
+    logo_y        = H - 220
+    line_y        = H - 290
+    avail_top     = sep_y + 80
+    avail_bottom  = line_y - 60
     avail_h       = avail_bottom - avail_top
 
     # Centra il blocco testo nello spazio disponibile
-    headline_y = avail_top + (avail_h - block_h) // 2
+    # Spingi leggermente verso l'alto rispetto al centro (proporzione aurea)
+    headline_y = avail_top + int((avail_h - block_h) * 0.42)
     headline_y = max(avail_top, headline_y)
 
     headline_end_y = _draw_headline_accent(
@@ -245,7 +246,7 @@ def render_story(content, output_dir: str) -> str:
     # ── Tagline ───────────────────────────────────────────────────────────────
     tagline = "We don't predict the market. We mark the moment."
     tl_w    = _text_w(draw, tagline, fonts["tagline"])
-    draw.text(((W - tl_w) // 2, logo_y + 72), tagline, font=fonts["tagline"], fill=INK_50)
+    draw.text(((W - tl_w) // 2, logo_y + 68), tagline, font=fonts["tagline"], fill=INK_50)
 
     # ── Barra gold in fondo (6px) ─────────────────────────────────────────────
     draw.rectangle([(0, H - 6), (W, H)], fill=GOLD)
