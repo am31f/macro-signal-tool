@@ -78,7 +78,7 @@ except ImportError:
 try:
     from instagram_content_generator import generate_carousel_content
     from slide_renderer_pillow import render_carousel_slides_pillow as render_carousel_slides
-    from instagram_publisher import publish_carousel
+    from instagram_publisher import publish_carousel, publish_single_image
     from comment_handler import process_all_recent_posts as process_recent_comments
 
     def pick_top_signal(cache_path: str) -> Optional[dict]:
@@ -430,7 +430,7 @@ async def _scheduled_afternoon_post():
             hashtags = content.hashtags
             if hashtags:
                 caption = caption.rstrip() + "\n\n" + " ".join(f"#{h}" for h in hashtags)
-            result = await publish_carousel([slide_path], caption)
+            result = await publish_single_image(Path(slide_path), caption)
             if result and result.success:
                 logger.info(f"Afternoon post: pubblicato OK post_id={result.post_id}")
             else:
@@ -1564,7 +1564,7 @@ async def instagram_publish_afternoon(
                     "caption_preview": caption[:300],
                 }
 
-            result = await publish_carousel([slide_path], caption)
+            result = await publish_single_image(Path(slide_path), caption)
             if result and result.success:
                 return {
                     "status": "published",
