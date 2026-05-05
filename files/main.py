@@ -120,6 +120,16 @@ except ImportError:
     generate_afternoon_post = None
     render_afternoon_post = None
 
+# Story giornaliera (opzionale — degrada gracefully)
+try:
+    from story_generator import generate_story
+    from story_renderer import render_story
+    _story_available = True
+except ImportError:
+    _story_available = False
+    generate_story = None
+    render_story = None
+
 # ─── Config ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -245,6 +255,19 @@ async def startup_event():
                 replace_existing=True,
             )
             logger.info("APScheduler: post pomeridiano 17:00 CET ✅")
+
+        # Story giornaliera alle 12:00 CET
+        if _instagram_available and _story_available:
+            scheduler.add_job(
+                _scheduled_story_post,
+                "cron",
+                hour=12,
+                minute=0,
+                timezone="Europe/Rome",
+                id="daily_story",
+                replace_existing=True,
+            )
+            logger.info("APScheduler: Story Instagram 12:00 CET ✅")
 
         scheduler.start()
         logger.info("APScheduler avviato: ciclo completo ogni 3h, prezzi ogni 15min ✅")
@@ -415,6 +438,65 @@ async def _scheduled_afternoon_post():
                 logger.error(f"Afternoon post: pubblicazione fallita — {err}")
     except Exception as e:
         logger.error(f"Scheduled afternoon post error: {e}", exc_info=True)
+
+
+async def _scheduled_story_post():
+    """Task schedulato: pubblica Story Instagram alle 12:00 CET."""
+    if not _instagram_available or not _story_available:
+        logger.info("Story post: non disponibile, skip")
+        return
+    logger.info("Story post: avvio generazione story giornaliera...")
+    try:
+        import tempfile
+        cache_path = str(DATA_DIR / "signals_cache.json")
+        content = generate_story(
+            signals_cache_path=cache_path if Path(cache_path).exists() else None
+        )
+        with tempfile.TemporaryDirectory(prefix="kairos_story_") as tmpdir:
+            slide_path = render_story(content, tmpdir)
+
+            # Copia in ig_slides per servirla staticamente
+            dest = _ig_slides_dir / Path(slide_path).name
+            dest.write_bytes(Path(slide_path).read_bytes())
+            public_url = f"{os.getenv('IG_IMAGE_HOST_URL', '').rstrip('/')}/static/ig_slides/{dest.name}"
+
+            caption = content.caption
+            hashtags = content.hashtags
+            if hashtags:
+                caption = caption.rstrip() + "\n\n" + " ".join(f"#{h}" for h in hashtags)
+
+            # Pubblica come Story (media_type=STORIES)
+            from instagram_publisher import _get_config, _api_post
+            import aiohttp
+            cfg = _get_config()
+            account_id = cfg["account_id"]
+            token = cfg["access_token"]
+
+            async with aiohttp.ClientSession() as session:
+                # Crea container Story
+                container_data = {
+                    "image_url": public_url,
+                    "media_type": "STORIES",
+                    "access_token": token,
+                }
+                result = await _api_post(session, f"{account_id}/media", container_data)
+                container_id = result["id"]
+                logger.info(f"Story container creato: {container_id}")
+
+                # Attendi qualche secondo
+                import asyncio as _aio
+                await _aio.sleep(3)
+
+                # Pubblica
+                pub_result = await _api_post(session, f"{account_id}/media_publish", {
+                    "creation_id": container_id,
+                    "access_token": token,
+                })
+                post_id = pub_result.get("id", "")
+                logger.info(f"Story pubblicata OK post_id={post_id}")
+
+    except Exception as e:
+        logger.error(f"Scheduled story post error: {e}", exc_info=True)
 
 
 async def _scheduled_instagram_comments():
@@ -1493,6 +1575,161 @@ async def instagram_publish_afternoon(
             else:
                 err = result.error if result else "unknown"
                 return {"status": "ERROR", "message": err}
+    except Exception as e:
+        import traceback as _tb
+        return {"status": "EXCEPTION", "error": str(e), "traceback": _tb.format_exc()}
+
+
+# ─── Endpoints Story ──────────────────────────────────────────────────────────
+
+@app.get("/instagram/story-test", summary="Anteprima Story (dry run, GET)")
+async def instagram_story_test(theme: Optional[str] = None):
+    """
+    Anteprima della Story giornaliera senza pubblicare.
+    theme: DATO_MACRO | LO_SAPEVI_CHE | PAROLA_DEL_GIORNO | RECAP_SETTIMANA
+    Apri nel browser per vedere i contenuti che verranno pubblicati alle 12:00.
+    """
+    if not _story_available:
+        return {"status": "NOT_CONFIGURED", "message": "story_generator non disponibile"}
+    try:
+        cache_path = str(DATA_DIR / "signals_cache.json")
+        content = generate_story(
+            signals_cache_path=cache_path if Path(cache_path).exists() else None,
+            force_theme=theme,
+        )
+        return {
+            "status": "DRY_RUN",
+            "theme": content.theme,
+            "eyebrow": content.eyebrow,
+            "headline": content.headline,
+            "subline": content.subline,
+            "accent_word": content.accent_word,
+            "caption_preview": content.caption[:400],
+            "hashtags": content.hashtags,
+        }
+    except Exception as e:
+        import traceback as _tb
+        return {"status": "EXCEPTION", "error": str(e), "traceback": _tb.format_exc()}
+
+
+@app.get("/instagram/story-preview", summary="Preview visiva Story (HTML)")
+async def instagram_story_preview(theme: Optional[str] = None):
+    """
+    Renderizza la Story e la mostra come immagine nel browser.
+    Utile per controllare il layout visivo prima della pubblicazione.
+    """
+    from fastapi.responses import HTMLResponse
+    import base64, tempfile
+
+    if not _story_available:
+        return HTMLResponse("<h2>story_generator non disponibile</h2>")
+    try:
+        cache_path = str(DATA_DIR / "signals_cache.json")
+        content = generate_story(
+            signals_cache_path=cache_path if Path(cache_path).exists() else None,
+            force_theme=theme,
+        )
+        with tempfile.TemporaryDirectory(prefix="kairos_story_preview_") as tmpdir:
+            slide_path = render_story(content, tmpdir)
+            img_b64 = base64.b64encode(Path(slide_path).read_bytes()).decode()
+
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+  <title>Kairós — Story Preview</title>
+  <style>
+    body {{ background: #1a1a18; display: flex; flex-direction: column;
+           align-items: center; padding: 40px; font-family: sans-serif; color: #F5F2E6; }}
+    h2 {{ color: #B8893B; margin-bottom: 8px; }}
+    p {{ color: #9B9B8E; margin: 4px 0; font-size: 14px; }}
+    img {{ max-width: 540px; width: 100%; border-radius: 8px; margin-top: 24px;
+           box-shadow: 0 8px 32px rgba(0,0,0,0.6); }}
+  </style>
+</head>
+<body>
+  <h2>Story Preview — {content.theme}</h2>
+  <p><strong>Headline:</strong> {content.headline}</p>
+  <p><strong>Subline:</strong> {content.subline}</p>
+  <p><strong>Eyebrow:</strong> {content.eyebrow}</p>
+  <img src="data:image/png;base64,{img_b64}" alt="Story Preview">
+</body>
+</html>"""
+        return HTMLResponse(html)
+    except Exception as e:
+        import traceback as _tb
+        return HTMLResponse(f"<pre>ERRORE:\n{_tb.format_exc()}</pre>")
+
+
+@app.post("/instagram/publish-story", summary="Pubblica Story (trigger manuale)")
+async def instagram_publish_story(
+    dry_run: bool = False,
+    theme: Optional[str] = None
+):
+    """
+    Trigger manuale per la Story giornaliera.
+    Normalmente gira automaticamente alle 12:00 CET.
+    """
+    if not _instagram_available or not _story_available:
+        return {"status": "NOT_CONFIGURED", "story_available": _story_available}
+    import tempfile
+    try:
+        cache_path = str(DATA_DIR / "signals_cache.json")
+        content = generate_story(
+            signals_cache_path=cache_path if Path(cache_path).exists() else None,
+            force_theme=theme,
+        )
+        with tempfile.TemporaryDirectory(prefix="kairos_story_") as tmpdir:
+            slide_path = render_story(content, tmpdir)
+
+            if dry_run:
+                return {
+                    "status": "DRY_RUN",
+                    "theme": content.theme,
+                    "headline": content.headline,
+                    "subline": content.subline,
+                    "eyebrow": content.eyebrow,
+                    "slide_rendered": True,
+                    "caption_preview": content.caption[:300],
+                }
+
+            # Copia in ig_slides per URL pubblico
+            dest = _ig_slides_dir / Path(slide_path).name
+            dest.write_bytes(Path(slide_path).read_bytes())
+            public_url = f"{os.getenv('IG_IMAGE_HOST_URL', '').rstrip('/')}/static/ig_slides/{dest.name}"
+
+            caption = content.caption
+            if content.hashtags:
+                caption = caption.rstrip() + "\n\n" + " ".join(f"#{h}" for h in content.hashtags)
+
+            from instagram_publisher import _get_config, _api_post
+            import aiohttp
+            cfg = _get_config()
+            account_id = cfg["account_id"]
+            token = cfg["access_token"]
+
+            async with aiohttp.ClientSession() as session:
+                container_data = {
+                    "image_url": public_url,
+                    "media_type": "STORIES",
+                    "access_token": token,
+                }
+                result = await _api_post(session, f"{account_id}/media", container_data)
+                container_id = result["id"]
+
+                import asyncio as _aio
+                await _aio.sleep(3)
+
+                pub_result = await _api_post(session, f"{account_id}/media_publish", {
+                    "creation_id": container_id,
+                    "access_token": token,
+                })
+                post_id = pub_result.get("id", "")
+                return {
+                    "status": "published",
+                    "post_id": post_id,
+                    "theme": content.theme,
+                    "headline": content.headline,
+                }
     except Exception as e:
         import traceback as _tb
         return {"status": "EXCEPTION", "error": str(e), "traceback": _tb.format_exc()}
