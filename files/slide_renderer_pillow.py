@@ -19,8 +19,10 @@ PAPER_DEEP= (236, 232, 215)
 GOLD      = (184, 137, 59)
 GOLD_SOFT = (201, 160, 98)
 GOLD_DEEP = (140, 102, 36)
-POS       = (45, 95, 63)
-NEG       = (140, 45, 45)
+POS       = (45, 95, 63)   # verde standard — usato SEMPRE per positivo
+NEG       = (140, 45, 45)  # rosso standard — usato SEMPRE per negativo
+POS_BG    = (28, 52, 36)   # bg riga positiva (slide 3)
+NEG_BG    = (62, 24, 24)   # bg riga negativa (slide 3)
 
 W, H = 1080, 1080
 PAD = 72   # padding laterale
@@ -273,10 +275,18 @@ def render_slide3(c, out, fonts):
         y += 62
     y += 16
 
-    # Righe storiche
+    # Righe storiche — layout verticalmente centrato
     rows = c.get("historical_rows", [])
     if isinstance(rows, list):
-        for row in rows[:5]:
+        rows = rows[:5]
+        row_h = 102  # altezza riga aumentata per riempire lo spazio
+        total_rows_h = len(rows) * row_h
+        # Centra verticalmente il blocco righe tra y e H-80
+        available = (H - 80) - y
+        if total_rows_h < available:
+            y += (available - total_rows_h) // 2
+
+        for row in rows:
             if isinstance(row, dict):
                 label    = str(row.get("label", ""))
                 value    = str(row.get("value", ""))
@@ -285,26 +295,27 @@ def render_slide3(c, out, fonts):
                 label, value, positive = str(row), "", True
 
             val_color = POS if positive else NEG
-            bg_color  = (45, 95, 63, 40) if positive else (140, 45, 45, 40)
-            row_h = 72
+            bg_fill   = POS_BG if positive else NEG_BG
 
-            # Sfondo riga colorato (rettangolo semitrasparente simulato)
-            bg_fill = (30, 55, 38) if positive else (70, 28, 28)
-            draw.rectangle([PAD, y, W-PAD, y+row_h-6], fill=bg_fill)
-
+            # Sfondo riga
+            draw.rectangle([PAD, y, W-PAD, y+row_h-8], fill=bg_fill)
             # Striscia laterale colorata
-            draw.rectangle([PAD, y, PAD+5, y+row_h-6], fill=val_color)
+            draw.rectangle([PAD, y, PAD+6, y+row_h-8], fill=val_color)
 
-            # Label
-            draw.text((PAD+18, y + 14), label, font=fonts["sans_26"], fill=PAPER)
+            # Label — più grande per riempire la riga
+            draw.text((PAD+20, y + 18), label, font=fonts["sans_30"], fill=PAPER)
 
-            # Value — grande, ben leggibile, allineato a destra
-            vw = _text_w(draw, value, fonts["mono_20"])
-            draw.text((W - PAD - vw - 12, y + 18), value, font=fonts["mono_20"], fill=val_color)
+            # Value — grande, PAPER su colore bg, massimo contrasto
+            vw = _text_w(draw, value, fonts["serif_36"])
+            draw.text((W - PAD - vw - 16, y + 30), value, font=fonts["serif_36"], fill=val_color)
+
+            # Linea separatrice tra label e value
+            draw.line([(W - PAD - vw - 30, y + 12), (W - PAD - vw - 30, y + row_h - 18)],
+                      fill=val_color, width=1)
 
             y += row_h
 
-            if y > H - 120:
+            if y > H - 80:
                 break
 
     img.save(str(out), "PNG")
@@ -335,34 +346,39 @@ def render_slide4(c, out, fonts):
         y += 62
     y += 16
 
-    # Bullish block
+    # Calcola spazio disponibile e dividi in due blocchi uguali
+    space_available = H - 80 - y
+    block_h = space_available // 2 - 12
+
+    # Bullish block — box pieno con sfondo verde scuro
     bullish = c.get("bullish_sectors", "")
     if bullish:
-        # Barra verde full-width
-        draw.rectangle([PAD, y, W-PAD, y+6], fill=POS)
-        y += 14
-        draw.text((PAD, y), "▲  POTENZIALE BENEFICIO", font=fonts["mono_16"], fill=POS)
-        y += 28
-        bl_font = fonts["sans_26"]
-        for line in _wrap(draw, bullish, bl_font, W - PAD*2 - 16)[:3]:
-            draw.text((PAD + 8, y), line, font=bl_font, fill=INK)
-            y += 36
-        y += 24
+        draw.rectangle([PAD, y, W-PAD, y+block_h], fill=POS_BG)
+        draw.rectangle([PAD, y, PAD+6, y+block_h], fill=POS)
+        draw.text((PAD+18, y+16), "▲  POTENZIALE BENEFICIO", font=fonts["mono_16"], fill=POS)
+        draw.line([(PAD+18, y+44), (W-PAD-18, y+44)], fill=POS, width=1)
+        bl_font = fonts["sans_30"]
+        by = y + 56
+        for line in _wrap(draw, bullish, bl_font, W - PAD*2 - 32)[:4]:
+            draw.text((PAD+18, by), line, font=bl_font, fill=PAPER)
+            by += 38
+        y += block_h + 16
 
-    # Bearish block
+    # Bearish block — box pieno con sfondo rosso scuro
     bearish = c.get("bearish_sectors", "")
     if bearish:
-        draw.rectangle([PAD, y, W-PAD, y+6], fill=NEG)
-        y += 14
-        draw.text((PAD, y), "▼  POTENZIALE PRESSIONE", font=fonts["mono_16"], fill=NEG)
-        y += 28
-        bl_font = fonts["sans_26"]
-        for line in _wrap(draw, bearish, bl_font, W - PAD*2 - 16)[:3]:
-            draw.text((PAD + 8, y), line, font=bl_font, fill=INK)
-            y += 36
+        draw.rectangle([PAD, y, W-PAD, y+block_h], fill=NEG_BG)
+        draw.rectangle([PAD, y, PAD+6, y+block_h], fill=NEG)
+        draw.text((PAD+18, y+16), "▼  POTENZIALE PRESSIONE", font=fonts["mono_16"], fill=NEG)
+        draw.line([(PAD+18, y+44), (W-PAD-18, y+44)], fill=NEG, width=1)
+        bl_font = fonts["sans_30"]
+        by = y + 56
+        for line in _wrap(draw, bearish, bl_font, W - PAD*2 - 32)[:4]:
+            draw.text((PAD+18, by), line, font=bl_font, fill=PAPER)
+            by += 38
 
     # Disclaimer
-    draw.text((PAD, H-56),
+    draw.text((PAD, H-46),
               "Non è consulenza finanziaria · Elaborato da IA su fonti pubbliche",
               font=fonts["mono_13"], fill=INK_50)
 
@@ -411,16 +427,21 @@ def render_slide5(c, out, fonts):
     y += 16
 
     # Box canale Telegram
-    box_y = H - 220
-    draw.rectangle([PAD, box_y, W-PAD, box_y+120], fill=INK)
+    box_y = H - 240
+    draw.rectangle([PAD, box_y, W-PAD, box_y+148], fill=INK)
 
-    label1 = "Approfondimenti e titoli impattati:"
-    draw.text((PAD + 20, box_y + 16), label1, font=fonts["mono_13"], fill=INK_50)
+    label1 = "Analisi completa ogni mattina →"
+    draw.text((PAD + 20, box_y + 16), label1, font=fonts["mono_13"], fill=GOLD_SOFT)
 
-    cta_channel = c.get("cta_channel", "@Kairós su Telegram")
+    cta_channel = c.get("cta_channel", "@Kairós")
     ch_font = fonts["serif_44"]
     ch_w = _text_w(draw, cta_channel, ch_font)
     draw.text(((W - ch_w)//2, box_y + 44), cta_channel, font=ch_font, fill=PAPER)
+
+    # Verbo d'azione sotto il nome canale
+    action = "Unisciti · Leggi · Anticipa il mercato"
+    aw = _text_w(draw, action, fonts["mono_13"])
+    draw.text(((W - aw)//2, box_y + 96), action, font=fonts["mono_13"], fill=INK_50)
 
     # Disclaimer
     draw.text((PAD, H-46),
