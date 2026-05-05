@@ -1660,6 +1660,54 @@ async def instagram_story_preview(theme: Optional[str] = None):
         return HTMLResponse(f"<pre>ERRORE:\n{_tb.format_exc()}</pre>")
 
 
+@app.get("/instagram/afternoon-preview", summary="Preview visiva post pomeridiano (HTML)")
+async def instagram_afternoon_preview(theme: Optional[str] = None):
+    """
+    Renderizza il post pomeridiano e lo mostra come immagine nel browser.
+    Utile per controllare il layout visivo prima della pubblicazione.
+    """
+    from fastapi.responses import HTMLResponse
+    import base64, tempfile
+
+    if not _afternoon_available:
+        return HTMLResponse("<h2>afternoon_post_generator non disponibile</h2>")
+    try:
+        cache_path = str(DATA_DIR / "signals_cache.json")
+        content = generate_afternoon_post(
+            signals_cache_path=cache_path if Path(cache_path).exists() else None,
+            force_theme=theme,
+        )
+        with tempfile.TemporaryDirectory(prefix="kairos_afternoon_preview_") as tmpdir:
+            slide_path = render_afternoon_post(content, tmpdir)
+            img_b64 = base64.b64encode(Path(slide_path).read_bytes()).decode()
+
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+  <title>Kairós — Afternoon Preview</title>
+  <style>
+    body {{ background: #1a1a18; display: flex; flex-direction: column;
+           align-items: center; padding: 40px; font-family: sans-serif; color: #F5F2E6; }}
+    h2 {{ color: #B8893B; margin-bottom: 8px; }}
+    p {{ color: #9B9B8E; margin: 4px 0; font-size: 14px; }}
+    img {{ max-width: 540px; width: 100%; border-radius: 8px; margin-top: 24px;
+           box-shadow: 0 8px 32px rgba(0,0,0,0.6); }}
+  </style>
+</head>
+<body>
+  <h2>Afternoon Preview — {content.theme}</h2>
+  <p><strong>Headline:</strong> {content.headline}</p>
+  <p><strong>Subline:</strong> {content.subline}</p>
+  <p><strong>Eyebrow:</strong> {content.eyebrow}</p>
+  <img src="data:image/png;base64,{img_b64}" alt="Afternoon Preview">
+</body>
+</html>"""
+        return HTMLResponse(html)
+    except Exception as e:
+        import traceback as _tb
+        return HTMLResponse(f"<pre>ERRORE:\n{_tb.format_exc()}</pre>")
+
+
 @app.post("/instagram/publish-story", summary="Pubblica Story (trigger manuale)")
 async def instagram_publish_story(
     dry_run: bool = False,
