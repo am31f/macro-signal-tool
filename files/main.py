@@ -110,6 +110,16 @@ except ImportError as _ig_err:
     process_recent_comments = None
     pick_top_signal = None
 
+# Post pomeridiano (opzionale — degrada gracefully)
+try:
+    from afternoon_post_generator import generate_afternoon_post
+    from afternoon_slide_renderer import render_afternoon_post
+    _afternoon_available = True
+except ImportError:
+    _afternoon_available = False
+    generate_afternoon_post = None
+    render_afternoon_post = None
+
 # ─── Config ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -222,6 +232,19 @@ async def startup_event():
                 replace_existing=True,
             )
             logger.info("APScheduler: Instagram carosello 09:00 CET + commenti ogni ora ✅")
+
+        # Post pomeridiano alle 17:00 CET
+        if _instagram_available and _afternoon_available:
+            scheduler.add_job(
+                _scheduled_afternoon_post,
+                "cron",
+                hour=17,
+                minute=0,
+                timezone="Europe/Rome",
+                id="afternoon_post",
+                replace_existing=True,
+            )
+            logger.info("APScheduler: post pomeridiano 17:00 CET ✅")
 
         scheduler.start()
         logger.info("APScheduler avviato: ciclo completo ogni 3h, prezzi ogni 15min ✅")
@@ -364,6 +387,34 @@ async def _publish_instagram_carousel_sync(dry_run: bool = False) -> dict:
         _ig_last_error = str(e)
         logger.error(f"_publish_instagram_carousel_sync error: {e}", exc_info=True)
         return {"status": "ERROR", "message": str(e)}
+
+
+async def _scheduled_afternoon_post():
+    """Task schedulato: pubblica post pomeridiano alle 17:00 CET."""
+    if not _instagram_available or not _afternoon_available:
+        logger.info("Afternoon post: non disponibile, skip")
+        return
+    logger.info("Afternoon post: avvio generazione post pomeridiano...")
+    try:
+        import tempfile
+        cache_path = str(DATA_DIR / "signals_cache.json")
+        content = generate_afternoon_post(
+            signals_cache_path=cache_path if Path(cache_path).exists() else None
+        )
+        with tempfile.TemporaryDirectory(prefix="kairos_afternoon_") as tmpdir:
+            slide_path = render_afternoon_post(content, tmpdir)
+            caption = content.caption
+            hashtags = content.hashtags
+            if hashtags:
+                caption = caption.rstrip() + "\n\n" + " ".join(f"#{h}" for h in hashtags)
+            result = await publish_carousel([slide_path], caption)
+            if result and result.success:
+                logger.info(f"Afternoon post: pubblicato OK post_id={result.post_id}")
+            else:
+                err = result.error if result else "unknown"
+                logger.error(f"Afternoon post: pubblicazione fallita — {err}")
+    except Exception as e:
+        logger.error(f"Scheduled afternoon post error: {e}", exc_info=True)
 
 
 async def _scheduled_instagram_comments():
@@ -1302,6 +1353,58 @@ async def instagram_publish_custom(content: dict, dry_run: bool = False):
                 return {"status": "published", "post_id": result.post_id, "slides": len(slide_paths)}
             else:
                 return {"status": "ERROR", "message": result.error if result else "unknown"}
+    except Exception as e:
+        import traceback as _tb
+        return {"status": "EXCEPTION", "error": str(e), "traceback": _tb.format_exc()}
+
+
+@app.post("/instagram/publish-afternoon", summary="Pubblica post pomeridiano (trigger manuale)")
+async def instagram_publish_afternoon(
+    dry_run: bool = False,
+    theme: Optional[str] = None
+):
+    """
+    Trigger manuale per il post pomeridiano.
+    Normalmente gira automaticamente alle 17:00 CET.
+    theme: CURIOSITA_MACRO | EVENTO_STORICO | METODO_KAIROS (opzionale, default rotazione automatica)
+    """
+    if not _instagram_available or not _afternoon_available:
+        return {"status": "NOT_CONFIGURED", "afternoon_available": _afternoon_available}
+    import tempfile
+    try:
+        cache_path = str(DATA_DIR / "signals_cache.json")
+        content = generate_afternoon_post(
+            signals_cache_path=cache_path if Path(cache_path).exists() else None,
+            force_theme=theme,
+        )
+        with tempfile.TemporaryDirectory(prefix="kairos_afternoon_") as tmpdir:
+            slide_path = render_afternoon_post(content, tmpdir)
+            caption = content.caption
+            if content.hashtags:
+                caption = caption.rstrip() + "\n\n" + " ".join(f"#{h}" for h in content.hashtags)
+
+            if dry_run:
+                return {
+                    "status": "DRY_RUN",
+                    "theme": content.theme,
+                    "headline": content.headline,
+                    "subline": content.subline,
+                    "eyebrow": content.eyebrow,
+                    "slide_rendered": True,
+                    "caption_preview": caption[:300],
+                }
+
+            result = await publish_carousel([slide_path], caption)
+            if result and result.success:
+                return {
+                    "status": "published",
+                    "post_id": result.post_id,
+                    "theme": content.theme,
+                    "headline": content.headline,
+                }
+            else:
+                err = result.error if result else "unknown"
+                return {"status": "ERROR", "message": err}
     except Exception as e:
         import traceback as _tb
         return {"status": "EXCEPTION", "error": str(e), "traceback": _tb.format_exc()}
