@@ -204,16 +204,17 @@ def render_story(content, output_dir: str) -> str:
 
     block_h = hl_total_h + sub_total_h
 
-    # Spazio disponibile tra separatore e riga logo
-    logo_y        = H - 220
-    line_y        = H - 290
-    avail_top     = sep_y + 80
-    avail_bottom  = line_y - 60
-    avail_h       = avail_bottom - avail_top
+    # Posizioni fisse logo e linea separatrice in basso
+    logo_y   = H - 220
+    line_y   = H - 290
 
-    # Centra il blocco testo nello spazio disponibile
-    # Spingi leggermente verso l'alto rispetto al centro (proporzione aurea)
-    headline_y = avail_top + int((avail_h - block_h) * 0.42)
+    # Centra il blocco testo esattamente tra il separatore e la linea logo
+    avail_top    = sep_y + 60
+    avail_bottom = line_y - 60
+    avail_h      = avail_bottom - avail_top
+
+    # Posiziona a un terzo dall'alto — regola tipografica per formati verticali
+    headline_y = avail_top + (avail_h - block_h) // 3
     headline_y = max(avail_top, headline_y)
 
     headline_end_y = _draw_headline_accent(
