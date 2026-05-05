@@ -2,9 +2,9 @@
 afternoon_slide_renderer.py
 Kairós — Renderer post pomeridiano (post singolo 1080×1350)
 
-Layout completamente diverso dal carosello delle 9:
+Layout editoriale su sfondo Paper (#F5F2E6):
   - Formato verticale 1080×1350 (4:5, ideale per feed Instagram)
-  - Sfondo Ink scuro (#0E0E0C) — inverso rispetto al carosello Paper
+  - Sfondo Paper crema — stesso del carosello delle 9
   - Headline grande centrata, serif Cormorant Garamond
   - Una parola in Gold per accento visivo
   - Eyebrow label in mono sopra
@@ -27,133 +27,111 @@ logger = logging.getLogger(__name__)
 # ─── Dimensioni ───────────────────────────────────────────────────────────────
 W, H = 1080, 1350
 
-# ─── Palette Kairós (invertita rispetto al carosello) ────────────────────────
-INK        = "#0E0E0C"
-PAPER      = "#F5F2E6"
-GOLD       = "#B8893B"
-GOLD_SOFT  = "#C9A062"
-INK_50     = "#6B6B62"
-INK_15     = "#D4D3C7"
+# ─── Palette Kairós ──────────────────────────────────────────────────────────
+INK       = (14, 14, 12)
+INK_50    = (107, 107, 98)
+INK_15    = (212, 211, 199)
+PAPER     = (245, 242, 230)
+GOLD      = (184, 137, 59)
+GOLD_DEEP = (140, 102, 36)
 
-def _hex(h: str):
-    h = h.lstrip("#")
-    return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
 
-C_INK       = _hex(INK)
-C_PAPER     = _hex(PAPER)
-C_GOLD      = _hex(GOLD)
-C_GOLD_SOFT = _hex(GOLD_SOFT)
-C_INK_50    = _hex(INK_50)
-C_INK_15    = _hex(INK_15)
+# ─── Font loader (identico al carosello che funziona) ────────────────────────
 
-# ─── Font ─────────────────────────────────────────────────────────────────────
-FONTS_DIR = Path(__file__).parent / "fonts"
+def _load_fonts():
+    d = Path(__file__).parent / "fonts"
 
-def _load_font(name: str, size: int) -> ImageFont.FreeTypeFont:
-    candidates = [
-        FONTS_DIR / name,
-        Path("/usr/share/fonts/truetype") / name,
-        Path("/usr/share/fonts") / name,
-    ]
-    for p in candidates:
+    def ttf(name, size):
+        p = d / name
         if p.exists():
             try:
                 return ImageFont.truetype(str(p), size)
             except Exception:
                 pass
-    return ImageFont.load_default()
+        logger.warning(f"afternoon_renderer: font non trovato {name} size={size}")
+        return ImageFont.load_default()
 
-def _get_fonts():
+    serif = "CormorantGaramond-Medium.ttf"
+    sans  = "Inter-Regular.ttf"
+    mono  = "JetBrainsMono-Regular.ttf"
+
     return {
-        "eyebrow":   _load_font("JetBrainsMono-Regular.ttf", 28),
-        "headline":  _load_font("CormorantGaramond-Medium.ttf", 96),
-        "headline_sm": _load_font("CormorantGaramond-Medium.ttf", 72),
-        "subline":   _load_font("Inter-Regular.ttf", 38),
-        "logo":      _load_font("CormorantGaramond-Medium.ttf", 44),
-        "tagline":   _load_font("Inter-Regular.ttf", 26),
+        "eyebrow":     ttf(mono,  28),
+        "headline":    ttf(serif, 96),
+        "headline_sm": ttf(serif, 72),
+        "subline":     ttf(sans,  38),
+        "logo":        ttf(serif, 44),
+        "tagline":     ttf(sans,  26),
     }
 
 
 # ─── Utilità testo ────────────────────────────────────────────────────────────
 
-def _wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int, draw: ImageDraw.ImageDraw) -> list[str]:
-    """Divide il testo in righe che non superano max_width pixel."""
-    words = text.split()
-    lines = []
-    current = ""
-    for word in words:
-        test = (current + " " + word).strip()
+def _wrap(draw, text, font, max_w):
+    words = str(text).split()
+    lines, cur = [], ""
+    for w in words:
+        test = (cur + " " + w).strip()
         bbox = draw.textbbox((0, 0), test, font=font)
-        if bbox[2] - bbox[0] <= max_width:
-            current = test
+        if bbox[2] - bbox[0] <= max_w:
+            cur = test
         else:
-            if current:
-                lines.append(current)
-            current = word
-    if current:
-        lines.append(current)
-    return lines
+            if cur:
+                lines.append(cur)
+            cur = w
+    if cur:
+        lines.append(cur)
+    return lines or [""]
 
 
-def _draw_text_centered(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont,
-                         y: int, color: tuple, max_width: int) -> int:
-    """Disegna testo centrato, va a capo se supera max_width. Ritorna y finale."""
-    lines = _wrap_text(text, font, max_width, draw)
-    for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=font)
-        w = bbox[2] - bbox[0]
-        x = (W - w) // 2
-        draw.text((x, y), line, font=font, fill=color)
-        y += (bbox[3] - bbox[1]) + 12
+def _tw(draw, text, font):
+    bbox = draw.textbbox((0, 0), str(text), font=font)
+    return bbox[2] - bbox[0]
+
+
+def _th(draw, text, font):
+    bbox = draw.textbbox((0, 0), str(text), font=font)
+    return bbox[3] - bbox[1]
+
+
+def _draw_centered(draw, text, font, y, color, max_w, gap=12):
+    """Testo centrato con word-wrap. Ritorna y finale."""
+    for line in _wrap(draw, text, font, max_w):
+        w = _tw(draw, line, font)
+        draw.text(((W - w) // 2, y), line, font=font, fill=color)
+        y += _th(draw, line, font) + gap
     return y
 
 
-def _draw_headline_with_accent(draw: ImageDraw.ImageDraw, headline: str, accent_word: str,
-                                 font: ImageFont.FreeTypeFont, y: int, max_width: int) -> int:
-    """
-    Disegna l'headline centrata con una parola in Gold.
-    Se accent_word è vuota, disegna tutto in PAPER.
-    """
-    if not accent_word or accent_word.lower() not in headline.lower():
-        return _draw_text_centered(draw, headline, font, y, C_INK, max_width)
+def _draw_headline_accent(draw, headline, accent, font, y, max_w, gap=16):
+    """Headline centrata con accent_word in Gold. Ritorna y finale."""
+    if not accent or accent.lower() not in headline.lower():
+        return _draw_centered(draw, headline, font, y, INK, max_w, gap)
 
-    lines = _wrap_text(headline, font, max_width, draw)
-    line_h = None
-
-    for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=font)
-        lw = bbox[2] - bbox[0]
-        lh = bbox[3] - bbox[1]
-        if line_h is None:
-            line_h = lh
-        x_start = (W - lw) // 2
-
+    for line in _wrap(draw, headline, font, max_w):
+        lw = _tw(draw, line, font)
+        lh = _th(draw, line, font)
+        x = (W - lw) // 2
         lower_line = line.lower()
-        lower_accent = accent_word.lower()
+        lower_accent = accent.lower()
 
         if lower_accent in lower_line:
             idx = lower_line.find(lower_accent)
-            before = line[:idx]
-            accent_part = line[idx:idx+len(accent_word)]
-            after = line[idx+len(accent_word):]
-
-            x = x_start
+            before      = line[:idx]
+            accent_part = line[idx:idx+len(accent)]
+            after       = line[idx+len(accent):]
+            cx = x
             if before:
-                draw.text((x, y), before, font=font, fill=C_INK)
-                b_bbox = draw.textbbox((0, 0), before, font=font)
-                x += b_bbox[2] - b_bbox[0]
-
-            draw.text((x, y), accent_part, font=font, fill=C_GOLD)
-            a_bbox = draw.textbbox((0, 0), accent_part, font=font)
-            x += a_bbox[2] - a_bbox[0]
-
+                draw.text((cx, y), before, font=font, fill=INK)
+                cx += _tw(draw, before, font)
+            draw.text((cx, y), accent_part, font=font, fill=GOLD)
+            cx += _tw(draw, accent_part, font)
             if after:
-                draw.text((x, y), after, font=font, fill=C_INK)
+                draw.text((cx, y), after, font=font, fill=INK)
         else:
-            draw.text((x_start, y), line, font=font, fill=C_INK)
+            draw.text((x, y), line, font=font, fill=INK)
 
-        y += lh + 14
-
+        y += lh + gap
     return y
 
 
@@ -175,51 +153,50 @@ def render_afternoon_post(content, output_dir: str) -> str:
     else:
         c = dict(content)
 
-    theme     = c.get("theme", "CURIOSITA_MACRO")
-    headline  = c.get("headline", "")
-    subline   = c.get("subline", "")
-    eyebrow   = c.get("eyebrow", "")
-    accent    = c.get("accent_word", "")
+    theme    = c.get("theme", "CURIOSITA_MACRO")
+    headline = c.get("headline", "")
+    subline  = c.get("subline", "")
+    eyebrow  = c.get("eyebrow", "")
+    accent   = c.get("accent_word", "")
 
-    fonts = _get_fonts()
+    f = _load_fonts()
 
-    # ── Canvas Paper (sfondo crema, leggibile) ────────────────────────────────
-    img  = Image.new("RGB", (W, H), C_PAPER)
+    # ── Canvas Paper ──────────────────────────────────────────────────────────
+    img  = Image.new("RGB", (W, H), PAPER)
     draw = ImageDraw.Draw(img)
 
     MARGIN    = 80
     CONTENT_W = W - MARGIN * 2
 
-    # ── Linea oro in cima ────────────────────────────────────────────────────
-    draw.rectangle([(0, 0), (W, 6)], fill=C_GOLD)
+    # ── Barra gold in cima ────────────────────────────────────────────────────
+    draw.rectangle([(0, 0), (W, 6)], fill=GOLD)
 
     # ── Eyebrow label ─────────────────────────────────────────────────────────
-    eyebrow_y = 80
-    eyebrow_text = eyebrow.upper()
-    eb_bbox = draw.textbbox((0, 0), eyebrow_text, font=fonts["eyebrow"])
-    eb_w = eb_bbox[2] - eb_bbox[0]
-    draw.text(((W - eb_w) // 2, eyebrow_y), eyebrow_text, font=fonts["eyebrow"], fill=C_GOLD)
+    eyebrow_y   = 80
+    eyebrow_txt = eyebrow.upper()
+    eb_w = _tw(draw, eyebrow_txt, f["eyebrow"])
+    draw.text(((W - eb_w) // 2, eyebrow_y), eyebrow_txt, font=f["eyebrow"], fill=GOLD_DEEP)
 
-    # ── Linea separatore gold sotto eyebrow ──────────────────────────────────
+    # ── Linea separatrice gold ────────────────────────────────────────────────
     sep_y = eyebrow_y + 52
-    draw.rectangle([(W//2 - 50, sep_y), (W//2 + 50, sep_y + 2)], fill=C_GOLD)
+    draw.rectangle([(W//2 - 50, sep_y), (W//2 + 50, sep_y + 2)], fill=GOLD)
 
-    # ── Headline — posizione fissa subito sotto il separatore ─────────────────
-    hl_font = fonts["headline"] if len(headline) <= 35 else fonts["headline_sm"]
+    # ── Headline ──────────────────────────────────────────────────────────────
+    hl_font    = f["headline"] if len(headline) <= 35 else f["headline_sm"]
     headline_y = sep_y + 80
 
-    headline_end_y = _draw_headline_with_accent(
+    headline_end_y = _draw_headline_accent(
         draw, headline, accent, hl_font, headline_y, CONTENT_W
     )
 
     # ── Subline ───────────────────────────────────────────────────────────────
     if subline:
         sub_y = headline_end_y + 36
-        _draw_text_centered(draw, subline, fonts["subline"], sub_y, C_INK_50, CONTENT_W)
+        _draw_centered(draw, subline, f["subline"], sub_y, INK_50, CONTENT_W)
 
     # ── Linea separatrice sopra logo ──────────────────────────────────────────
     line_y = H - 210
-    draw.rectangle([(MARGIN, line_y), (W - MARGIN, line_y + 1)], fill=C_INK_15)
+    draw.rectangle([(MARGIN, line_y), (W - MARGIN, line_y + 1)], fill=INK_15)
 
     # ── Tre punti decorativi ──────────────────────────────────────────────────
     dot_y = line_y + 28
@@ -227,23 +204,21 @@ def render_afternoon_post(content, output_dir: str) -> str:
         dot_x = W // 2 + dx
         r = 4
         draw.ellipse([(dot_x - r, dot_y - r), (dot_x + r, dot_y + r)],
-                     fill=C_GOLD if i == 1 else C_INK_15)
+                     fill=GOLD if i == 1 else INK_15)
 
-    # ── Logo Kairós in Ink ────────────────────────────────────────────────────
+    # ── Logo KAIRÓS ───────────────────────────────────────────────────────────
     logo_text = "KAIRÓS"
-    logo_bbox = draw.textbbox((0, 0), logo_text, font=fonts["logo"])
-    logo_w    = logo_bbox[2] - logo_bbox[0]
+    logo_w    = _tw(draw, logo_text, f["logo"])
     logo_y    = H - 165
-    draw.text(((W - logo_w) // 2, logo_y), logo_text, font=fonts["logo"], fill=C_INK)
+    draw.text(((W - logo_w) // 2, logo_y), logo_text, font=f["logo"], fill=INK)
 
     # ── Tagline ───────────────────────────────────────────────────────────────
     tagline = "We don't predict the market. We mark the moment."
-    tl_bbox = draw.textbbox((0, 0), tagline, font=fonts["tagline"])
-    tl_w    = tl_bbox[2] - tl_bbox[0]
-    draw.text(((W - tl_w) // 2, logo_y + 58), tagline, font=fonts["tagline"], fill=C_INK_50)
+    tl_w    = _tw(draw, tagline, f["tagline"])
+    draw.text(((W - tl_w) // 2, logo_y + 58), tagline, font=f["tagline"], fill=INK_50)
 
-    # ── Linea oro in fondo ────────────────────────────────────────────────────
-    draw.rectangle([(0, H - 6), (W, H)], fill=C_GOLD)
+    # ── Barra gold in fondo ───────────────────────────────────────────────────
+    draw.rectangle([(0, H - 6), (W, H)], fill=GOLD)
 
     # ── Salva ─────────────────────────────────────────────────────────────────
     filename = f"afternoon_post_{theme.lower()}.png"
@@ -260,15 +235,14 @@ if __name__ == "__main__":
     import sys
     logging.basicConfig(level=logging.INFO)
 
-    # Contenuto mock per test
     class MockContent:
-        theme = "CURIOSITA_MACRO"
-        headline = "Perché il dollaro sale quando c'è crisi?"
-        subline = "Il paradosso del safe haven più usato al mondo."
-        eyebrow = "CURIOSITÀ MACRO"
-        caption = "Test caption"
-        hashtags = ["macro", "kairos"]
-        accent_word = "dollaro"
+        theme        = "CURIOSITA_MACRO"
+        headline     = "Perché il dollaro sale quando c'è crisi?"
+        subline      = "Il paradosso del safe haven più usato al mondo."
+        eyebrow      = "CURIOSITÀ MACRO"
+        caption      = "Test caption"
+        hashtags     = ["macro", "kairos"]
+        accent_word  = "dollaro"
 
     with tempfile.TemporaryDirectory() as td:
         path = render_afternoon_post(MockContent(), td)
