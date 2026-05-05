@@ -341,6 +341,7 @@ def run_classification_batch(
         log.info(f"[{i+1}/{len(unclassified)}] {headline[:80]}")
 
         # ── Livello 1: pre-scrematura Haiku ──────────────────────────────────
+        time.sleep(0.3)  # evita rate limit su Haiku
         is_relevant, prescreen_reason = prescreen_news(headline, client)
 
         if not is_relevant:

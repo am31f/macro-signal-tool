@@ -384,7 +384,7 @@ def _fetch_and_classify_sync():
     new_items = run_ingestion()
     logger.info(f"Fetch completato: {len(new_items)} nuove news")
     # run_classification_batch legge le non-classificate dal DB, chiama Claude API e aggiorna DB
-    classified = run_classification_batch(limit=20)
+    classified = run_classification_batch(limit=100)
     logger.info(f"Classificate {len(classified)} news")
     return classified
 
