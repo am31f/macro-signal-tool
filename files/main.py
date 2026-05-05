@@ -1158,6 +1158,68 @@ async def instagram_render_test():
         return {"status": "ERROR", "error": str(e), "traceback": _tb.format_exc()}
 
 
+@app.get("/instagram/preview", summary="Anteprima visiva slide nel browser")
+async def instagram_preview():
+    """Genera le slide mock e le mostra come HTML nel browser."""
+    import tempfile, base64, traceback as _tb
+    from fastapi.responses import HTMLResponse
+    try:
+        from slide_renderer_pillow import render_carousel_slides_pillow
+        from pathlib import Path as _P
+        mock = {
+            "signal_id": "preview_v3",
+            "eyebrow": "ENERGIA · GEOPOLITICA",
+            "date_label": "oggi",
+            "hook_title": "MSC aggira Hormuz: costi di trasporto verso l'alto",
+            "hook_subtitle": "Le rotte alternative alzano la pressione inflazionistica globale",
+            "causal_chain": "MSC bypassa Hormuz → rerouting via Sud Africa → +40% costi shipping → inflazione beni finali",
+            "context_title": "Perché Hormuz è così cruciale",
+            "context_stats": [
+                {"value": "21%",  "label": "del petrolio mondiale transita dallo Stretto"},
+                {"value": "17M",  "label": "barili al giorno verso Asia ed Europa"},
+                {"value": "+40%", "label": "aumento costi su rotte alternative via Sud Africa"},
+            ],
+            "historical_title": "In crisi simili, i mercati si sono mossi così",
+            "historical_rows": [
+                {"label": "Petrolio (Brent)",   "value": "+18% / +35%", "positive": True},
+                {"label": "Shipping (BDIY)",    "value": "+25% / +60%", "positive": True},
+                {"label": "Oro (safe haven)",   "value": "+5% / +12%",  "positive": True},
+                {"label": "Azionario EU",       "value": "-3% / -8%",   "positive": False},
+                {"label": "EUR/USD",            "value": "-1% / -3%",   "positive": False},
+            ],
+            "sectors_title": "Settori coinvolti",
+            "bullish_sectors": "Energia (XLE, ENI) · Shipping (ZIM, BDIY) · Difesa (LMT, BA) · Oro (GLD)",
+            "bearish_sectors": "Airlines (IAG, RYA) · Auto (BMW, TM) · Consumer discretionary EU",
+            "cta_channel": "@Kairós",
+            "source_label": "Reuters · Bloomberg · FT",
+            "caption": "preview", "hashtags": [],
+        }
+        with tempfile.TemporaryDirectory(prefix="kairos_preview_") as tmpdir:
+            slides = render_carousel_slides_pillow(mock, _P(tmpdir))
+            imgs_b64 = []
+            for s in slides:
+                with open(s, "rb") as f:
+                    imgs_b64.append(base64.b64encode(f.read()).decode())
+
+        html = """<!DOCTYPE html><html><head>
+<meta charset="UTF-8"><title>Kairós · Preview Slide</title>
+<style>
+body{margin:0;background:#1a1a18;display:flex;flex-direction:column;align-items:center;padding:40px 20px;font-family:monospace;}
+h1{color:#b8893b;letter-spacing:3px;font-size:14px;margin-bottom:32px;}
+.slides{display:flex;flex-wrap:wrap;gap:20px;justify-content:center;}
+img{width:360px;height:360px;object-fit:cover;border-radius:4px;border:1px solid #333;}
+p{color:#6b6b62;font-size:11px;margin-top:4px;text-align:center;}
+</style></head><body>
+<h1>KAIRÓS · PREVIEW CAROSELLO</h1><div class="slides">"""
+        labels = ["Slide 1 — Hook","Slide 2 — Contesto","Slide 3 — Storico","Slide 4 — Settori","Slide 5 — CTA"]
+        for i, b64 in enumerate(imgs_b64):
+            html += f'<div><img src="data:image/png;base64,{b64}"><p>{labels[i]}</p></div>'
+        html += "</div></body></html>"
+        return HTMLResponse(content=html)
+    except Exception as e:
+        return HTMLResponse(content=f"<pre>ERRORE: {e}\n{_tb.format_exc()}</pre>", status_code=500)
+
+
 @app.get("/instagram/font-test", summary="Testa disponibilità font su Railway")
 async def instagram_font_test():
     """Verifica quali font sono disponibili e se Pillow funziona."""
