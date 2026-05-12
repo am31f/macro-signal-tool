@@ -46,6 +46,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # ─── Logger (definito prima di qualsiasi import opzionale) ───────────────────
+import logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
@@ -287,22 +288,17 @@ async def startup_event():
             )
             logger.info("APScheduler: Story Instagram 12:00 CET ✅")
 
-        # PEAD: scan alle 07:00 (pre-apertura EU) e 22:00 (post-chiusura USA)
         if _pead_available:
             scheduler.add_job(
                 _scheduled_pead_scan,
-                "cron",
-                hour=7,
-                minute=0,
+                "cron", hour=7, minute=0,
                 timezone="Europe/Rome",
                 id="pead_morning",
                 replace_existing=True,
             )
             scheduler.add_job(
                 _scheduled_pead_scan,
-                "cron",
-                hour=22,
-                minute=0,
+                "cron", hour=22, minute=0,
                 timezone="Europe/Rome",
                 id="pead_evening",
                 replace_existing=True,
@@ -315,35 +311,6 @@ async def startup_event():
         logger.warning("APScheduler non installato — polling automatico disabilitato")
     except Exception as e:
         logger.error(f"Errore avvio scheduler: {e} — continuo comunque")
-
-
-async def _scheduled_pead_scan():
-    """Task schedulato: scansiona earnings e aggiorna cache PEAD."""
-    global _latest_pead_signals
-    if not _pead_available:
-        return
-    logger.info("⏰ PEAD: avvio scan earnings...")
-    try:
-        loop = asyncio.get_event_loop()
-        results = await loop.run_in_executor(None, lambda: run_pead_pipeline(lookback_days=2))
-        _latest_pead_signals = [r.__dict__ if hasattr(r, "__dict__") else r for r in results]
-        logger.info(f"⏰ PEAD: {len(results)} segnali trovati")
-        # Alert Telegram per segnali PEAD ad alta confidence
-        if _telegram and results:
-            for r in results:
-                rd = r.__dict__ if hasattr(r, "__dict__") else r
-                if rd.get("confidence_base", 0) >= 0.60:
-                    try:
-                        await _telegram.send_message(
-                            f"📊 *PEAD Signal* `{rd['signal_id']}`\n"
-                            f"{rd['direction']} `{rd['ticker']}` — EPS surprise {rd['eps_surprise_pct']:+.1f}%\n"
-                            f"SUE={rd['sue_score']:.2f} | Size €{rd['position_size_eur']:.0f} | Conf={rd['confidence_base']:.0%}\n"
-                            f"Stop {rd['stop_price']:.3f} → Target {rd['target_price']:.3f}"
-                        )
-                    except Exception:
-                        pass
-    except Exception as e:
-        logger.error(f"PEAD scan error: {e}")
 
 
 async def _scheduled_full_cycle():
@@ -368,6 +335,31 @@ async def _scheduled_news_fetch():
         await loop.run_in_executor(None, _fetch_and_classify_sync)
     except Exception as e:
         logger.error(f"Scheduled news fetch error: {e}")
+
+
+async def _scheduled_pead_scan():
+    """Task schedulato: scansiona earnings e aggiorna cache PEAD."""
+    global _latest_pead_signals
+    if not _pead_available:
+        return
+    logger.info("PEAD scan schedulato: avvio...")
+    try:
+        results = await asyncio.get_event_loop().run_in_executor(
+            None, run_pead_pipeline
+        )
+        _latest_pead_signals = results if isinstance(results, list) else []
+        logger.info(f"PEAD scan completato: {len(_latest_pead_signals)} segnali trovati")
+        # Telegram alert per segnali con confidence >= 0.60
+        if _telegram:
+            for sig in _latest_pead_signals:
+                conf = sig.get("confidence_base", 0)
+                if conf >= 0.60:
+                    try:
+                        await _telegram.send_pead_signal_alert(sig)
+                    except Exception as te:
+                        logger.warning(f"Telegram PEAD alert fallito: {te}")
+    except Exception as e:
+        logger.error(f"PEAD scan fallito: {e}")
 
 
 async def _scheduled_price_update():
@@ -1075,63 +1067,6 @@ async def get_latest_signals():
     }
 
 
-# ─── PEAD Endpoints ───────────────────────────────────────────────────────────
-
-@app.api_route("/pead/scan", methods=["GET", "POST"], summary="Esegui scan PEAD manuale")
-async def pead_scan_manual(background_tasks: BackgroundTasks):
-    """
-    Avvia uno scan PEAD in background.
-    Cerca earnings degli ultimi 2 giorni nel watchlist USA+Europa,
-    calcola SUE e genera segnali K-PEAD-YYYY-NNNN.
-    """
-    if not _pead_available:
-        raise HTTPException(503, "Modulo PEAD non disponibile (controlla import)")
-    background_tasks.add_task(_scheduled_pead_scan)
-    return {
-        "status": "started",
-        "message": "PEAD scan avviato in background. Controlla /pead/signals tra 1-2 minuti.",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
-
-
-@app.get("/pead/signals", summary="Ultimi segnali PEAD")
-async def get_pead_signals():
-    """
-    Ritorna i segnali PEAD più recenti dalla cache.
-    I segnali hanno ID K-PEAD-YYYY-NNNN e strategia='PEAD'.
-    """
-    global _latest_pead_signals
-    if not _pead_available:
-        return {"count": 0, "signals": [], "note": "modulo PEAD non disponibile"}
-
-    # Prova prima dalla memoria, poi dalla cache su disco
-    signals = _latest_pead_signals
-    if not signals:
-        signals = get_latest_pead_signals() or []
-        _latest_pead_signals = signals
-
-    return {
-        "count": len(signals),
-        "strategy": "PEAD",
-        "signals": signals,
-    }
-
-
-@app.get("/pead/calendar", summary="Calendario earnings prossimi 7 giorni")
-async def get_pead_calendar(days: int = 7):
-    """
-    Ritorna il calendario degli earnings imminenti per i titoli nel watchlist.
-    Usato dalla dashboard per mostrare i prossimi eventi.
-    """
-    if not _pead_available:
-        return {"count": 0, "upcoming": []}
-    try:
-        upcoming = get_upcoming_earnings(days_ahead=days)
-        return {"count": len(upcoming), "upcoming": upcoming}
-    except Exception as e:
-        return {"count": 0, "upcoming": [], "error": str(e)}
-
-
 @app.post("/trade/execute", summary="Esegui segnale in paper trading")
 async def execute_trade(request: ExecuteRequest):
     """
@@ -1805,4 +1740,184 @@ async def instagram_afternoon_preview(theme: Optional[str] = None):
         )
         with tempfile.TemporaryDirectory(prefix="kairos_afternoon_preview_") as tmpdir:
             slide_path = render_afternoon_post(content, tmpdir)
-            img_b64 = base64.b64encod
+            img_b64 = base64.b64encode(Path(slide_path).read_bytes()).decode()
+
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+  <title>Kairós — Afternoon Preview</title>
+  <style>
+    body {{ background: #1a1a18; display: flex; flex-direction: column;
+           align-items: center; padding: 40px; font-family: sans-serif; color: #F5F2E6; }}
+    h2 {{ color: #B8893B; margin-bottom: 8px; }}
+    p {{ color: #9B9B8E; margin: 4px 0; font-size: 14px; }}
+    img {{ max-width: 540px; width: 100%; border-radius: 8px; margin-top: 24px;
+           box-shadow: 0 8px 32px rgba(0,0,0,0.6); }}
+  </style>
+</head>
+<body>
+  <h2>Afternoon Preview — {content.theme}</h2>
+  <p><strong>Headline:</strong> {content.headline}</p>
+  <p><strong>Subline:</strong> {content.subline}</p>
+  <p><strong>Eyebrow:</strong> {content.eyebrow}</p>
+  <img src="data:image/png;base64,{img_b64}" alt="Afternoon Preview">
+</body>
+</html>"""
+        return HTMLResponse(html)
+    except Exception as e:
+        import traceback as _tb
+        return HTMLResponse(f"<pre>ERRORE:\n{_tb.format_exc()}</pre>")
+
+
+@app.post("/instagram/publish-story", summary="Pubblica Story (trigger manuale)")
+async def instagram_publish_story(
+    dry_run: bool = False,
+    theme: Optional[str] = None
+):
+    """
+    Trigger manuale per la Story giornaliera.
+    Normalmente gira automaticamente alle 12:00 CET.
+    """
+    if not _instagram_available or not _story_available:
+        return {"status": "NOT_CONFIGURED", "story_available": _story_available}
+    import tempfile
+    try:
+        cache_path = str(DATA_DIR / "signals_cache.json")
+        content = generate_story(
+            signals_cache_path=cache_path if Path(cache_path).exists() else None,
+            force_theme=theme,
+        )
+        with tempfile.TemporaryDirectory(prefix="kairos_story_") as tmpdir:
+            slide_path = render_story(content, tmpdir)
+
+            if dry_run:
+                return {
+                    "status": "DRY_RUN",
+                    "theme": content.theme,
+                    "headline": content.headline,
+                    "subline": content.subline,
+                    "eyebrow": content.eyebrow,
+                    "slide_rendered": True,
+                    "caption_preview": content.caption[:300],
+                }
+
+            # Copia in ig_slides per URL pubblico
+            dest = _ig_slides_dir / Path(slide_path).name
+            dest.write_bytes(Path(slide_path).read_bytes())
+            public_url = f"{os.getenv('IG_IMAGE_HOST_URL', '').rstrip('/')}/static/ig_slides/{dest.name}"
+
+            caption = content.caption
+            if content.hashtags:
+                caption = caption.rstrip() + "\n\n" + " ".join(f"#{h}" for h in content.hashtags)
+
+            from instagram_publisher import _get_config, _api_post
+            import aiohttp
+            cfg = _get_config()
+            account_id = cfg["account_id"]
+            token = cfg["access_token"]
+
+            async with aiohttp.ClientSession() as session:
+                container_data = {
+                    "image_url": public_url,
+                    "media_type": "STORIES",
+                    "access_token": token,
+                }
+                result = await _api_post(session, f"{account_id}/media", container_data)
+                container_id = result["id"]
+
+                import asyncio as _aio
+                await _aio.sleep(3)
+
+                pub_result = await _api_post(session, f"{account_id}/media_publish", {
+                    "creation_id": container_id,
+                    "access_token": token,
+                })
+                post_id = pub_result.get("id", "")
+                return {
+                    "status": "published",
+                    "post_id": post_id,
+                    "theme": content.theme,
+                    "headline": content.headline,
+                }
+    except Exception as e:
+        import traceback as _tb
+        return {"status": "EXCEPTION", "error": str(e), "traceback": _tb.format_exc()}
+
+
+# ─── Endpoints PEAD ──────────────────────────────────────────────────────────
+
+@app.post("/pead/scan", summary="Esegui scan PEAD manuale")
+async def pead_scan(background_tasks: BackgroundTasks):
+    if not _pead_available:
+        raise HTTPException(503, "Modulo PEAD non disponibile (controlla import)")
+    background_tasks.add_task(_scheduled_pead_scan)
+    return {"status": "scan avviato in background", "message": "Risultati disponibili in ~30s su /pead/signals"}
+
+@app.get("/pead/scan", summary="Esegui scan PEAD manuale (GET)")
+async def pead_scan_get(background_tasks: BackgroundTasks):
+    if not _pead_available:
+        raise HTTPException(503, "Modulo PEAD non disponibile (controlla import)")
+    background_tasks.add_task(_scheduled_pead_scan)
+    return {"status": "scan avviato in background", "message": "Risultati disponibili in ~30s su /pead/signals"}
+
+@app.get("/pead/signals", summary="Ultimi segnali PEAD")
+async def pead_signals():
+    global _latest_pead_signals
+    if not _pead_available:
+        return {"count": 0, "signals": [], "note": "modulo PEAD non disponibile"}
+    # Prova a caricare da cache su disco se la cache in memoria è vuota
+    if not _latest_pead_signals:
+        try:
+            cache_path = DATA_DIR / "pead_results_cache.json"
+            if cache_path.exists():
+                with open(cache_path) as f:
+                    cached = json.load(f)
+                _latest_pead_signals = cached if isinstance(cached, list) else cached.get("signals", [])
+        except Exception:
+            pass
+    return {"count": len(_latest_pead_signals), "signals": _latest_pead_signals}
+
+@app.get("/pead/calendar", summary="Prossimi earnings nel watchlist")
+async def pead_calendar(days: int = 7):
+    if not _pead_available:
+        return {"count": 0, "upcoming": [], "note": "modulo PEAD non disponibile"}
+    try:
+        upcoming = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: get_upcoming_earnings(days)
+        )
+        return {"count": len(upcoming), "upcoming": upcoming, "days": days}
+    except Exception as e:
+        logger.error(f"PEAD calendar errore: {e}")
+        return {"count": 0, "upcoming": [], "error": str(e)}
+
+
+@app.get("/debug/fonts", summary="Debug: lista font disponibili su Railway")
+async def debug_fonts():
+    """Mostra quali file esistono nella cartella fonts e se Pillow li carica."""
+    from PIL import ImageFont
+    fonts_dir = Path(__file__).parent / "fonts"
+    result = {
+        "fonts_dir": str(fonts_dir),
+        "fonts_dir_exists": fonts_dir.exists(),
+        "files": [],
+        "load_test": {},
+    }
+    if fonts_dir.exists():
+        result["files"] = sorted(str(p.name) for p in fonts_dir.iterdir())
+
+    for name, size in [
+        ("CormorantGaramond-Medium.ttf", 96),
+        ("Inter-Regular.ttf", 38),
+        ("JetBrainsMono-Regular.ttf", 28),
+    ]:
+        p = fonts_dir / name
+        if p.exists():
+            try:
+                f = ImageFont.truetype(str(p), size)
+                result["load_test"][name] = "OK"
+            except Exception as ex:
+                result["load_test"][name] = f"ERROR: {ex}"
+        else:
+            result["load_test"][name] = "FILE NOT FOUND"
+
+    return result
