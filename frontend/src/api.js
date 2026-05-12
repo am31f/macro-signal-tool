@@ -20,9 +20,19 @@ async function fetchJSON(path, options = {}) {
 // ── Health ──────────────────────────────────────────────────────────────────
 export const getHealth       = () => fetchJSON('/')
 
+// ── System status (per pannello diagnostica) ─────────────────────────────────
+export const getSystemStatus = async () => {
+  const [health, unclassified] = await Promise.all([
+    fetchJSON('/'),
+    fetchJSON('/news/unclassified?limit=500').catch(() => ({ count: 0 })),
+  ])
+  return { health, unclassified_count: unclassified.count }
+}
+
 // ── News ────────────────────────────────────────────────────────────────────
-export const fetchNews       = () => fetchJSON('/news/fetch', { method: 'POST' })
-export const getUnclassified = (limit = 10) => fetchJSON(`/news/unclassified?limit=${limit}`)
+export const fetchNews        = () => fetchJSON('/news/fetch', { method: 'POST' })
+export const classifyNews     = (limit = 500) => fetchJSON(`/news/classify?limit=${limit}`, { method: 'POST' })
+export const getUnclassified  = (limit = 10) => fetchJSON(`/news/unclassified?limit=${limit}`)
 
 // ── Signals ─────────────────────────────────────────────────────────────────
 export const runSignals      = (limit = 30) => fetchJSON(`/signals/run?limit=${limit}`)

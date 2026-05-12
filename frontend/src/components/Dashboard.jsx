@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { getPortfolio, getLatestSignals, fetchNews, runSignals, updatePrices } from '../api.js'
+import { getPortfolio, getLatestSignals, fetchNews, classifyNews, runSignals, updatePrices, getSystemStatus } from '../api.js'
 import { CATEGORY_COLORS, KELLY_COLOR, LoadingSpinner, EmptyState } from '../App.jsx'
 
 // ── Stat Card ─────────────────────────────────────────────────────────────────
@@ -88,6 +88,156 @@ function SignalPreview({ signal, onClick }) {
   )
 }
 
+// ── System Status Panel ───────────────────────────────────────────────────────
+function SystemStatus({ onClassify, classifying }) {
+  const [status, setStatus] = useState(null)
+  const [error, setError] = useState(null)
+  const [lastCheck, setLastCheck] = useState(null)
+  const [open, setOpen] = useState(false)
+
+  const check = useCallback(async () => {
+    setError(null)
+    try {
+      const data = await getSystemStatus()
+      const h = data.health
+      const unclassified = data.unclassified_count
+
+      // Determina stato API Claude: se il server risponde ma ci sono molte news
+      // non classificate rispetto all'atteso (>50), probabilmente c'era un blackout.
+      const apiOk = !!h.status
+      const backlogHigh = unclassified > 50
+      const backlogMed  = unclassified > 0 && unclassified <= 50
+
+      setStatus({
+        serverOk:     apiOk,
+        nav:          h.portfolio_nav,
+        returnPct:    h.total_return_pct,
+        openPos:      h.open_positions,
+        signalsCache: h.signals_in_cache,
+        unclassified,
+        backlogHigh,
+        backlogMed,
+        serverTs:     h.timestamp,
+      })
+      setLastCheck(new Date().toLocaleTimeString('it-IT'))
+    } catch (e) {
+      setError(e.message)
+      setStatus(null)
+      setLastCheck(new Date().toLocaleTimeString('it-IT'))
+    }
+  }, [])
+
+  useEffect(() => {
+    check()
+    const id = setInterval(check, 120_000) // aggiorna ogni 2 min
+    return () => clearInterval(id)
+  }, [check])
+
+  // Colore globale del pannello
+  const hasAlert = error || status?.backlogHigh || !status?.serverOk
+  const hasWarn  = status?.backlogMed
+  const panelColor = hasAlert ? 'border-red-500/50 bg-red-950/20'
+                   : hasWarn  ? 'border-yellow-500/40 bg-yellow-950/15'
+                   : 'border-green-500/30 bg-green-950/10'
+  const dotColor  = hasAlert ? 'bg-red-400 animate-pulse'
+                  : hasWarn  ? 'bg-yellow-400 animate-pulse'
+                  : 'bg-green-400'
+
+  const Row = ({ label, value, valueColor = 'text-slate-200', sub }) => (
+    <div className="flex items-center justify-between py-1 border-b border-slate-700/40 last:border-0">
+      <span className="text-xs text-slate-400">{label}</span>
+      <div className="text-right">
+        <span className={`text-xs font-mono font-medium ${valueColor}`}>{value}</span>
+        {sub && <span className="text-xs text-slate-500 ml-1.5">{sub}</span>}
+      </div>
+    </div>
+  )
+
+  return (
+    <div className={`rounded-xl border px-4 py-3 mb-5 ${panelColor}`}>
+      {/* Header cliccabile */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between"
+      >
+        <div className="flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full ${dotColor}`} />
+          <span className="text-sm font-semibold text-white">
+            {error         ? '⚠ Sistema — errore connessione'
+             : hasAlert    ? '⚠ Sistema — attenzione richiesta'
+             : hasWarn     ? '◑ Sistema — backlog in smaltimento'
+             : status      ? '✓ Sistema — tutto ok'
+             : 'Sistema — verifica in corso...'}
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          {lastCheck && <span className="text-xs text-slate-500">{lastCheck}</span>}
+          <span className="text-slate-400 text-xs">{open ? '▲' : '▼'}</span>
+        </div>
+      </button>
+
+      {/* Corpo espandibile */}
+      {open && (
+        <div className="mt-3 pt-3 border-t border-slate-700/40">
+          {error ? (
+            <div className="text-xs text-red-300 font-mono bg-red-900/20 rounded p-2">
+              ❌ Server Railway non raggiungibile<br />
+              <span className="text-slate-400">{error}</span><br /><br />
+              <span className="text-slate-300">Cause probabili:</span><br />
+              · Credito API Claude esaurito → ricarica su console.anthropic.com<br />
+              · Server Railway in sleep → attendi 30s e riprova<br />
+              · Deploy fallito → controlla Railway dashboard
+            </div>
+          ) : status ? (
+            <>
+              <Row label="Server Railway"
+                   value={status.serverOk ? '🟢 online' : '🔴 offline'}
+                   valueColor={status.serverOk ? 'text-green-400' : 'text-red-400'} />
+              <Row label="NAV portafoglio"
+                   value={`€${status.nav?.toFixed(2) ?? '–'}`}
+                   valueColor={status.returnPct >= 0 ? 'text-green-400' : 'text-red-400'}
+                   sub={`${status.returnPct >= 0 ? '+' : ''}${status.returnPct?.toFixed(3)}%`} />
+              <Row label="Posizioni aperte"  value={status.openPos ?? '–'} />
+              <Row label="Segnali in cache"  value={status.signalsCache ?? '–'} valueColor="text-sky-400" />
+              <Row
+                label="News non classificate"
+                value={status.unclassified}
+                valueColor={status.backlogHigh ? 'text-red-400' : status.backlogMed ? 'text-yellow-400' : 'text-green-400'}
+                sub={status.backlogHigh ? '← backlog alto, API era offline' : status.backlogMed ? '← smaltimento in corso' : '← ok'}
+              />
+              {status.backlogHigh && (
+                <div className="mt-2 p-2 rounded bg-red-900/25 text-xs text-red-200">
+                  <strong>Causa probabile:</strong> l'API Claude era offline (credito esaurito).<br />
+                  Le news sono state ingerite ma non classificate.<br />
+                  <button
+                    onClick={onClassify}
+                    disabled={classifying}
+                    className="mt-2 px-3 py-1 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white rounded text-xs font-medium transition-colors"
+                  >
+                    {classifying ? '⏳ Classificazione in corso...' : '▶ Classifica backlog ora'}
+                  </button>
+                </div>
+              )}
+              {status.backlogMed && (
+                <div className="mt-2 p-2 rounded bg-yellow-900/20 text-xs text-yellow-200">
+                  Classificazione in corso in background. Aggiorna tra qualche minuto.
+                </div>
+              )}
+              {status.serverTs && (
+                <div className="text-xs text-slate-600 mt-2 text-right font-mono">
+                  server ts: {new Date(status.serverTs).toLocaleString('it-IT')}
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-xs text-slate-400">Caricamento stato sistema...</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Dashboard principale ──────────────────────────────────────────────────────
 export default function Dashboard({ onSignalClick }) {
   const [portfolio, setPortfolio] = useState(null)
@@ -95,6 +245,7 @@ export default function Dashboard({ onSignalClick }) {
   const [loading, setLoading] = useState(true)
   const [fetchingNews, setFetchingNews] = useState(false)
   const [updatingPrices, setUpdatingPrices] = useState(false)
+  const [classifying, setClassifying] = useState(false)
   const [lastRefresh, setLastRefresh] = useState(null)
   const [toast, setToast] = useState(null)
   const [pipelineStatus, setPipelineStatus] = useState(null)
@@ -168,6 +319,18 @@ export default function Dashboard({ onSignalClick }) {
     }
   }
 
+  const handleClassify = async () => {
+    setClassifying(true)
+    try {
+      await classifyNews(500)
+      showToast('Classificazione backlog avviata in background', 'success')
+    } catch (e) {
+      showToast(`Errore classificazione: ${e.message}`, 'error')
+    } finally {
+      setClassifying(false)
+    }
+  }
+
   const handleUpdatePrices = async () => {
     setUpdatingPrices(true)
     try {
@@ -221,6 +384,9 @@ export default function Dashboard({ onSignalClick }) {
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto">
+      {/* System Status */}
+      <SystemStatus onClassify={handleClassify} classifying={classifying} />
+
       {/* Toast */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-all ${
