@@ -3,7 +3,7 @@ import Dashboard from './components/Dashboard.jsx'
 import SignalDetail from './components/SignalDetail.jsx'
 import Performance from './components/Performance.jsx'
 import Journal from './components/Journal.jsx'
-import { getHealth, getLatestSignals, runSignals } from './api.js'
+import { getHealth, getLatestSignals, runSignals, getPeadSignals, runPeadScan, getPeadCalendar } from './api.js'
 
 // ── Icone SVG inline ─────────────────────────────────────────────────────────
 const Icon = {
@@ -35,12 +35,21 @@ const Icon = {
 
 const NAV_ITEMS = [
   { id: 'dashboard',   label: 'Dashboard',   icon: Icon.dashboard },
-  { id: 'signals',     label: 'Segnali',     icon: Icon.signal },
+  { id: 'signals',     label: 'Macro',       icon: Icon.signal },
+  { id: 'pead',        label: 'PEAD',        icon: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+    </svg>
+  )},
   { id: 'performance', label: 'Performance', icon: Icon.performance },
   { id: 'journal',     label: 'Journal',     icon: Icon.journal },
 ]
 
 // ── Shared utilities ──────────────────────────────────────────────────────────
+// Badge PEAD — giallo per distinguerlo da MACRO blu
+export const PEAD_BADGE = 'bg-yellow-800/60 text-yellow-300'
+
 export const CATEGORY_COLORS = {
   ENERGY_SUPPLY_SHOCK:       'bg-orange-900/60 text-orange-300',
   MILITARY_CONFLICT:         'bg-red-900/60 text-red-300',
@@ -193,6 +202,205 @@ function SignalsList({ onSelect }) {
   )
 }
 
+// ── PEADPage ──────────────────────────────────────────────────────────────────
+function PEADPage() {
+  const [signals, setSignals]   = useState([])
+  const [calendar, setCalendar] = useState([])
+  const [loading, setLoading]   = useState(true)
+  const [scanning, setScanning] = useState(false)
+  const [lastUpdate, setLastUpdate] = useState(null)
+
+  const load = useCallback(async () => {
+    try {
+      const [sigData, calData] = await Promise.all([
+        getPeadSignals().catch(() => ({ count: 0, signals: [] })),
+        getPeadCalendar(7).catch(() => ({ count: 0, upcoming: [] })),
+      ])
+      setSignals(sigData.signals || [])
+      setCalendar(calData.upcoming || [])
+      setLastUpdate(new Date().toLocaleTimeString('it-IT'))
+    } catch (e) {
+      console.error('PEAD load error:', e)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const handleScan = async () => {
+    setScanning(true)
+    try {
+      await runPeadScan()
+      setTimeout(load, 5000)
+    } catch (e) {
+      alert(`Errore scan: ${e.message}`)
+    } finally {
+      setScanning(false)
+    }
+  }
+
+  if (loading) return <LoadingSpinner label="Caricamento PEAD..." />
+
+  return (
+    <div className="p-4 md:p-6 max-w-5xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <h1 className="text-2xl font-bold text-white">PEAD</h1>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-800/60 text-yellow-300 font-medium">
+              EARNINGS DRIFT
+            </span>
+          </div>
+          <p className="text-xs text-slate-500">
+            Post-Earnings Announcement Drift — strategia parallela alla pipeline macro
+            {lastUpdate && ` · Aggiornato ${lastUpdate}`}
+          </p>
+        </div>
+        <button
+          onClick={handleScan}
+          disabled={scanning}
+          className="px-4 py-2 bg-yellow-700 hover:bg-yellow-600 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
+        >
+          {scanning ? '⏳ Scan in corso...' : '🔍 Scan earnings'}
+        </button>
+      </div>
+
+      {/* Segnali attivi */}
+      <section className="mb-6">
+        <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">
+          Segnali attivi ({signals.length})
+        </h2>
+        {signals.length === 0 ? (
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 text-center">
+            <p className="text-slate-400 text-sm">Nessun segnale PEAD attivo</p>
+            <p className="text-slate-500 text-xs mt-1">
+              Lo scanner gira automaticamente alle 07:00 e 22:00 CET, oppure clicca "Scan earnings"
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-3">
+            {signals.map((s, i) => {
+              const conf = s.confidence_base ?? 0
+              const confColor = conf >= 0.65 ? 'text-green-400' : conf >= 0.52 ? 'text-yellow-400' : 'text-slate-400'
+              const dirColor = s.direction === 'LONG' ? 'bg-green-900/60 text-green-300' : 'bg-red-900/60 text-red-300'
+              const kellyColor = { STRONG: 'text-green-400', MODERATE: 'text-yellow-400', WEAK: 'text-orange-400' }
+              return (
+                <div key={i} className="bg-slate-800 border border-yellow-700/30 rounded-xl p-4">
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-800/60 text-yellow-300 font-medium">
+                        EARNINGS
+                      </span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${dirColor}`}>
+                        {s.direction}
+                      </span>
+                      <span className="font-semibold text-white">{s.ticker}</span>
+                      <span className="text-xs text-slate-400">{s.company_name}</span>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className={`text-lg font-bold ${confColor}`}>{(conf * 100).toFixed(0)}%</div>
+                      <div className="text-xs text-slate-500">confidence</div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs mt-2">
+                    <div>
+                      <span className="text-slate-500">SUE score</span>
+                      <p className="text-white font-mono font-medium">{s.sue_score?.toFixed(2)}σ</p>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">EPS surprise</span>
+                      <p className={`font-mono font-medium ${s.eps_surprise_pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {s.eps_surprise_pct >= 0 ? '+' : ''}{s.eps_surprise_pct?.toFixed(1)}%
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Size</span>
+                      <p className="text-sky-400 font-medium">€{s.position_size_eur?.toFixed(0) ?? '–'}</p>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Kelly</span>
+                      <p className={kellyColor[s.kelly_quality] || 'text-slate-400'}>{s.kelly_quality ?? '–'}</p>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Stop</span>
+                      <p className="text-red-400 font-mono">{s.stop_price?.toFixed(3)}</p>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Target</span>
+                      <p className="text-green-400 font-mono">{s.target_price?.toFixed(3)}</p>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Hold</span>
+                      <p className="text-slate-300">{s.hold_days_target}g</p>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Settore</span>
+                      <p className="text-slate-300 truncate">{s.sector ?? '–'}</p>
+                    </div>
+                  </div>
+                  {s.macro_regime_boost && (
+                    <div className="mt-2 text-xs text-yellow-300 bg-yellow-900/20 rounded px-2 py-1">
+                      ✦ Macro boost: {s.macro_regime_note}
+                    </div>
+                  )}
+                  <div className="mt-2 text-xs text-slate-600 font-mono">
+                    {s.signal_id} · earnings {s.earnings_date}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* Calendario earnings prossimi 7 giorni */}
+      <section>
+        <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">
+          Prossimi earnings (7 giorni)
+        </h2>
+        {calendar.length === 0 ? (
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 text-center">
+            <p className="text-slate-500 text-xs">Nessun earnings imminente nel watchlist</p>
+          </div>
+        ) : (
+          <div className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-700 text-xs text-slate-500 uppercase tracking-wider">
+                  <th className="text-left px-4 py-2">Ticker</th>
+                  <th className="text-left px-4 py-2">Data</th>
+                  <th className="text-right px-4 py-2">Tra</th>
+                </tr>
+              </thead>
+              <tbody>
+                {calendar.map((e, i) => (
+                  <tr key={i} className="border-t border-slate-700/50 hover:bg-slate-700/20">
+                    <td className="px-4 py-2 font-mono font-medium text-yellow-300">{e.ticker}</td>
+                    <td className="px-4 py-2 text-slate-300">{e.earnings_date}</td>
+                    <td className="px-4 py-2 text-right text-slate-400 text-xs">
+                      {e.days_until === 0 ? 'oggi' : e.days_until === 1 ? 'domani' : `${e.days_until}g`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* Info strategia */}
+      <div className="mt-6 bg-slate-800/50 border border-slate-700/40 rounded-xl p-4 text-xs text-slate-500">
+        <p className="font-medium text-slate-400 mb-1">Come funziona PEAD</p>
+        <p>SUE ≥ 2σ · Market cap $500M–$100B · Hold 20-45 giorni · Stop 4% · Target 8% (R/R 2:1)</p>
+        <p className="mt-1">Scanner automatico alle 07:00 e 22:00 CET · Segnali ID: K-PEAD-YYYY-NNNN</p>
+        <p className="mt-1">Win rate atteso: 62% base, 70% con macro boost · Mercati: USA + Europa</p>
+      </div>
+    </div>
+  )
+}
+
 // ── App root ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [page, setPage] = useState('dashboard')
@@ -302,6 +510,7 @@ export default function App() {
               />
             : <SignalsList onSelect={goToSignalDetail} />
         )}
+        {page === 'pead'        && <PEADPage />}
         {page === 'performance' && <Performance />}
         {page === 'journal'     && <Journal />}
       </main>
