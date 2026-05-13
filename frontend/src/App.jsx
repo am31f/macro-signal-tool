@@ -232,10 +232,21 @@ function PEADPage() {
     setScanning(true)
     try {
       await runPeadScan()
-      setTimeout(load, 5000)
+      // Lo scan gira in background (~2-3 min su 94 ticker)
+      // Polling ogni 15s per 3 minuti finché arrivano segnali
+      let attempts = 0
+      const poll = async () => {
+        attempts++
+        await load()
+        if (attempts < 12) {
+          setTimeout(poll, 15000)
+        } else {
+          setScanning(false)
+        }
+      }
+      setTimeout(poll, 10000)
     } catch (e) {
       alert(`Errore scan: ${e.message}`)
-    } finally {
       setScanning(false)
     }
   }
@@ -397,6 +408,44 @@ function PEADPage() {
         <p className="mt-1">Scanner automatico alle 07:00 e 22:00 CET · Segnali ID: K-PEAD-YYYY-NNNN</p>
         <p className="mt-1">Win rate atteso: 62% base, 70% con macro boost · Mercati: USA + Europa</p>
       </div>
+
+      {/* Calendario stagioni earnings */}
+      <div className="mt-4 bg-slate-800/50 border border-slate-700/40 rounded-xl p-4 text-xs text-slate-500">
+        <p className="font-medium text-slate-400 mb-3">📅 Calendario stagioni earnings</p>
+        <div className="grid grid-cols-1 gap-2">
+          {[
+            { stagione: 'Q1 2026', periodo: 'Apr – Mag 2026', picco: 'Metà apr – metà mag', stato: 'closing' },
+            { stagione: 'Q2 2026', periodo: 'Lug – Ago 2026', picco: 'Metà lug – metà ago', stato: 'next' },
+            { stagione: 'Q3 2026', periodo: 'Ott – Nov 2026', picco: 'Metà ott – metà nov', stato: 'future' },
+            { stagione: 'Q4 2026', periodo: 'Gen – Feb 2027', picco: 'Metà gen – metà feb 2027', stato: 'future' },
+          ].map(({ stagione, periodo, picco, stato }) => (
+            <div key={stagione} className="flex items-center justify-between bg-slate-700/30 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-2">
+                <span className={`inline-block w-2 h-2 rounded-full ${
+                  stato === 'closing' ? 'bg-orange-400' :
+                  stato === 'next'    ? 'bg-yellow-400' :
+                  'bg-slate-600'
+                }`} />
+                <span className="font-medium text-slate-300">{stagione}</span>
+              </div>
+              <span className="text-slate-400">{periodo}</span>
+              <span className="text-slate-500 hidden sm:block">picco: {picco}</span>
+              <span className={`text-xs px-2 py-0.5 rounded-full ${
+                stato === 'closing' ? 'bg-orange-900/40 text-orange-300' :
+                stato === 'next'    ? 'bg-yellow-900/40 text-yellow-300' :
+                'bg-slate-700 text-slate-500'
+              }`}>
+                {stato === 'closing' ? 'in chiusura' : stato === 'next' ? 'prossima' : 'attesa'}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 pt-3 border-t border-slate-700/50 space-y-1">
+          <p>🇺🇸 <span className="text-slate-400">USA</span>: reportistica trimestrale regolare (Q1–Q4)</p>
+          <p>🇩🇪🇫🇷🇬🇧🇮🇹 <span className="text-slate-400">Europa</span>: report con 1–2 settimane di ritardo rispetto agli USA · alcune aziende (DE, FR) riportano solo semestrale (H1/H2) → meno segnali PEAD ma comunque presenti</p>
+          <p className="text-slate-600 mt-1">Tra una stagione e l'altra è normale non ricevere segnali per 4–6 settimane.</p>
+        </div>
+      </div>
     </div>
   )
 }
@@ -454,66 +503,4 @@ export default function App() {
               <button
                 key={item.id}
                 onClick={() => navigate(item.id)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                  page === item.id
-                    ? 'bg-sky-600 text-white'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-700'
-                }`}
-              >
-                {item.icon}{item.label}
-              </button>
-            ))}
-          </nav>
-
-          {/* Status pill */}
-          <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${
-              apiStatus === 'ok'       ? 'bg-green-400' :
-              apiStatus === 'error'    ? 'bg-red-400'   : 'bg-yellow-400 animate-pulse'
-            }`} />
-            <span className="text-xs text-slate-400 hidden sm:block">
-              {apiStatus === 'ok'
-                ? `API OK${navData?.portfolio_nav ? ` · NAV €${navData.portfolio_nav.toFixed(0)}` : ''}`
-                : apiStatus === 'error'
-                ? 'API offline — avvia uvicorn'
-                : 'Connessione…'}
-            </span>
-          </div>
-        </div>
-      </header>
-
-      {/* ── Mobile nav ─────────────────────────────────────────────────────── */}
-      <nav className="md:hidden flex border-b border-slate-700/60" style={{ background: '#1e293b' }}>
-        {NAV_ITEMS.map(item => (
-          <button
-            key={item.id}
-            onClick={() => navigate(item.id)}
-            className={`flex-1 flex flex-col items-center gap-1 py-2 text-xs font-medium transition-colors ${
-              page === item.id ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500'
-            }`}
-          >
-            {item.icon}{item.label}
-          </button>
-        ))}
-      </nav>
-
-      {/* ── Contenuto principale ────────────────────────────────────────────── */}
-      <main className="flex-1 overflow-auto">
-        {page === 'dashboard' && (
-          <Dashboard onSignalClick={goToSignalDetail} />
-        )}
-        {page === 'signals' && (
-          selectedSignalIndex !== null
-            ? <SignalDetail
-                index={selectedSignalIndex}
-                onBack={() => setSelectedSignalIndex(null)}
-              />
-            : <SignalsList onSelect={goToSignalDetail} />
-        )}
-        {page === 'pead'        && <PEADPage />}
-        {page === 'performance' && <Performance />}
-        {page === 'journal'     && <Journal />}
-      </main>
-    </div>
-  )
-}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-
