@@ -363,17 +363,74 @@ async def _scheduled_pead_scan():
 
 
 async def _scheduled_price_update():
-    """Task schedulato: aggiorna prezzi e controlla stop/target."""
+    """Task schedulato: aggiorna prezzi, controlla stop/target e chiude posizioni PEAD scadute."""
     try:
         loop = asyncio.get_event_loop()
+
+        # ── Stop/target automatici (tutte le posizioni) ───────────────────────
         closed = await loop.run_in_executor(
             None, lambda: check_all_stops_and_targets(DB_PATH)
         )
-        # Phase 6.1: alert Telegram per ogni posizione chiusa automaticamente
         if _telegram and closed:
             for position in (closed if isinstance(closed, list) else []):
                 reason = position.get("close_reason", "auto")
                 await _telegram.send_trade_closed(position, close_reason=reason)
+
+        # ── Chiusura per scadenza hold (solo posizioni PEAD) ──────────────────
+        try:
+            import sqlite3 as _sqlite3
+            from datetime import date as _date, timedelta as _td
+            import yfinance as _yf
+
+            with _sqlite3.connect(DB_PATH) as conn:
+                conn.row_factory = _sqlite3.Row
+                rows = conn.execute("""
+                    SELECT id, ticker, direction, open_price, open_date,
+                           hold_days_target, strategy
+                    FROM positions
+                    WHERE status = 'open' AND strategy = 'PEAD'
+                """).fetchall()
+
+            today = _date.today()
+            for row in rows:
+                open_date = _date.fromisoformat(str(row["open_date"])[:10])
+                hold_days = int(row["hold_days_target"] or 30)
+                expiry = open_date + _td(days=hold_days)
+
+                if today < expiry:
+                    continue
+
+                ticker = row["ticker"]
+                try:
+                    info = _yf.Ticker(ticker).fast_info
+                    current_price = float(info.get("lastPrice", 0) or info.get("regularMarketPrice", 0))
+                except Exception:
+                    current_price = 0.0
+
+                if current_price <= 0:
+                    logger.warning(f"PEAD expire {ticker}: prezzo non disponibile, skip chiusura")
+                    continue
+
+                days_held = (today - open_date).days
+                import paper_executor as _pe
+                await loop.run_in_executor(
+                    None, lambda: _pe.close_position(row["id"], current_price, "hold_expired", DB_PATH)
+                )
+                logger.info(f"PEAD expire {ticker}: posizione chiusa dopo {days_held}g a {current_price:.3f} ✅")
+
+                if _telegram:
+                    try:
+                        await _telegram.send_trade_closed(
+                            {"ticker": ticker, "close_price": current_price,
+                             "days_held": days_held, "strategy": "PEAD"},
+                            close_reason="hold_expired"
+                        )
+                    except Exception:
+                        pass
+
+        except Exception as exp_err:
+            logger.warning(f"PEAD expire check errore: {exp_err}")
+
     except Exception as e:
         logger.error(f"Scheduled price update error: {e}")
 
