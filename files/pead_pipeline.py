@@ -211,7 +211,7 @@ def _size_pead_trade(signal: PEADSignal, nav_eur: float, vix: float) -> Optional
 
 def run_pead_pipeline(
     nav_eur: float = 10000.0,
-    lookback_days: int = 2,
+    lookback_days: int = 45,
     save_results: bool = True,
 ) -> list[PEADTradeReady]:
     """

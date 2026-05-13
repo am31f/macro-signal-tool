@@ -357,7 +357,7 @@ def _calc_confidence(sue: float, quarters_history: int, macro_boost: bool) -> fl
 # ─── Scanner principale ───────────────────────────────────────────────────────
 
 def scan_earnings(
-    lookback_days: int = 2,
+    lookback_days: int = 45,
     watchlist: Optional[list] = None,
     save_cache: bool = True,
 ) -> list[PEADSignal]:
