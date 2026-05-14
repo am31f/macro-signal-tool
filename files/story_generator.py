@@ -36,10 +36,10 @@ THEME_MAP = {
 }
 
 THEME_LABELS = {
-    "DATO_MACRO":        "📊 DATO MACRO",
-    "LO_SAPEVI_CHE":     "💡 LO SAPEVI CHE...",
-    "PAROLA_DEL_GIORNO": "📖 PAROLA DEL GIORNO",
-    "RECAP_SETTIMANA":   "🗓 SETTIMANA IN CIFRE",
+    "DATO_MACRO":        "· DATO MACRO",
+    "LO_SAPEVI_CHE":     "· LO SAPEVI CHE",
+    "PAROLA_DEL_GIORNO": "· PAROLA DEL GIORNO",
+    "RECAP_SETTIMANA":   "· SETTIMANA IN CIFRE",
 }
 
 
@@ -62,99 +62,99 @@ _FALLBACK = {
     "DATO_MACRO": [
         StoryContent(
             theme="DATO_MACRO",
-            eyebrow="📊 DATO MACRO",
+            eyebrow="· DATO MACRO",
             headline="Il PIL mondiale supera i 100 trilioni di dollari",
             subline="Per la prima volta nella storia economica globale.",
             accent_word="100 trilioni",
             caption="Un numero che ridefinisce la scala dell'economia globale. Kairós analizza ogni mattina i dati che contano davvero.",
-            hashtags=["macroeconomia", "PIL", "economia", "mercatifinanziari", "kairos"],
+            hashtags=["macroinvestor", "macroresearch", "kairosmacro"],
         ),
         StoryContent(
             theme="DATO_MACRO",
-            eyebrow="📊 DATO MACRO",
+            eyebrow="· DATO MACRO",
             headline="L'oro ha battuto l'S&P 500 nel 2024",
             subline="+27% contro +23% — il metallo giallo torna protagonista.",
             accent_word="oro",
             caption="Quando l'oro batte le azioni, il mercato sta mandando un segnale preciso. Kairós lo legge per te.",
-            hashtags=["oro", "gold", "SP500", "investimenti", "kairos"],
+            hashtags=["macroinvestor", "macroresearch", "kairosmacro"],
         ),
         StoryContent(
             theme="DATO_MACRO",
-            eyebrow="📊 DATO MACRO",
+            eyebrow="· DATO MACRO",
             headline="La Fed ha alzato i tassi 11 volte in 16 mesi",
             subline="Il ciclo di rialzi più rapido dal 1980.",
             accent_word="11 volte",
             caption="Capire la Fed significa capire dove vanno i mercati. Ogni mattina su Kairós.",
-            hashtags=["Fed", "tassi", "politicamonetaria", "macroeconomia", "kairos"],
+            hashtags=["macroinvestor", "macroresearch", "kairosmacro"],
         ),
     ],
     "LO_SAPEVI_CHE": [
         StoryContent(
             theme="LO_SAPEVI_CHE",
-            eyebrow="💡 LO SAPEVI CHE...",
+            eyebrow="· LO SAPEVI CHE",
             headline="Il NYSE esiste dal 1792",
             subline="Fondato sotto un albero di platano a Wall Street.",
             accent_word="1792",
             caption="La storia dei mercati è piena di momenti che hanno cambiato tutto. Kairós li studia per anticipare i prossimi.",
-            hashtags=["storia", "wallstreet", "NYSE", "finanza", "kairos"],
+            hashtags=["macroinvestor", "macroresearch", "kairosmacro"],
         ),
         StoryContent(
             theme="LO_SAPEVI_CHE",
-            eyebrow="💡 LO SAPEVI CHE...",
+            eyebrow="· LO SAPEVI CHE",
             headline="Il Bitcoin ha perso il 80% quattro volte",
             subline="E ogni volta è tornato a nuovi massimi.",
             accent_word="80%",
             caption="I cicli di mercato si ripetono. Kairós analizza i pattern per capire dove siamo.",
-            hashtags=["bitcoin", "crypto", "ciclieconomici", "trading", "kairos"],
+            hashtags=["macroinvestor", "macroresearch", "kairosmacro"],
         ),
         StoryContent(
             theme="LO_SAPEVI_CHE",
-            eyebrow="💡 LO SAPEVI CHE...",
+            eyebrow="· LO SAPEVI CHE",
             headline="Warren Buffett ha guadagnato il 99% della sua ricchezza dopo i 50 anni",
             subline="Il potere del tempo nel compounding.",
             accent_word="99%",
             caption="La pazienza è la strategia più sottovalutata in finanza. Kairós ti aiuta a capire quando agire e quando aspettare.",
-            hashtags=["Buffett", "investimenti", "compounding", "finanza", "kairos"],
+            hashtags=["macroinvestor", "macroresearch", "kairosmacro"],
         ),
     ],
     "PAROLA_DEL_GIORNO": [
         StoryContent(
             theme="PAROLA_DEL_GIORNO",
-            eyebrow="📖 PAROLA DEL GIORNO",
+            eyebrow="· PAROLA DEL GIORNO",
             headline="Contango",
             subline="Quando il prezzo futuro supera quello spot — il mercato prezza scarsità futura.",
             accent_word="Contango",
             caption="Capire il linguaggio dei mercati è il primo passo per anticiparli. Ogni giorno una parola nuova su Kairós.",
-            hashtags=["finanza", "trading", "glossario", "mercati", "kairos"],
+            hashtags=["macroinvestor", "macroresearch", "kairosmacro"],
         ),
         StoryContent(
             theme="PAROLA_DEL_GIORNO",
-            eyebrow="📖 PAROLA DEL GIORNO",
+            eyebrow="· PAROLA DEL GIORNO",
             headline="Yield Curve",
             subline="La forma della curva dei rendimenti anticipa le recessioni da decenni.",
             accent_word="Yield Curve",
             caption="La curva dei rendimenti è uno degli indicatori più potenti in macroeconomia. Kairós la monitora per te.",
-            hashtags=["yieldcurve", "obbligazioni", "recessione", "macroeconomia", "kairos"],
+            hashtags=["macroinvestor", "macroresearch", "kairosmacro"],
         ),
         StoryContent(
             theme="PAROLA_DEL_GIORNO",
-            eyebrow="📖 PAROLA DEL GIORNO",
+            eyebrow="· PAROLA DEL GIORNO",
             headline="Carry Trade",
             subline="Prendi in prestito dove costa poco, investi dove rende di più.",
             accent_word="Carry Trade",
             caption="Il carry trade muove trilioni di dollari ogni giorno. Kairós spiega i meccanismi che guidano i mercati globali.",
-            hashtags=["carrytrade", "forex", "macroeconomia", "trading", "kairos"],
+            hashtags=["macroinvestor", "macroresearch", "kairosmacro"],
         ),
     ],
     "RECAP_SETTIMANA": [
         StoryContent(
             theme="RECAP_SETTIMANA",
-            eyebrow="🗓 SETTIMANA IN CIFRE",
+            eyebrow="· SETTIMANA IN CIFRE",
             headline="Questa settimana sui mercati",
             subline="Analisi dei movimenti macro più rilevanti della settimana.",
             accent_word="mercati",
             caption="Ogni domenica Kairós fa il punto sui movimenti macro della settimana. Seguici per non perderti nulla.",
-            hashtags=["recap", "mercati", "settimana", "macroeconomia", "kairos"],
+            hashtags=["macroinvestor", "macroresearch", "kairosmacro"],
         ),
     ],
 }
@@ -206,19 +206,29 @@ def _generate_with_haiku(theme: str, signal_headline: str) -> Optional[StoryCont
 
         instruction = theme_instructions.get(theme, theme_instructions["DATO_MACRO"])
 
-        prompt = f"""Sei il content strategist di Kairós, un canale Instagram di macro-finanza con tono editoriale serio e accessibile.
+        prompt = f"""Sei il redattore editoriale di Kairós — pubblicazione macro finanziaria italiana su Instagram.
+
+TONO DI VOCE (regole assolute):
+- Nessuna emoji nel testo — né nell'headline, né nella caption, né nella subline
+- Nessun punto esclamativo
+- Numeri precisi e verificabili
+- Tono: "un central banker che legge romanzi" — sobrio, autorevole, preciso
 
 Evento/segnale del giorno: "{signal_headline}"
 Tema Story: {label}
 Istruzione: {instruction}
 
+STRUTTURA CAPTION (1-2 frasi):
+- Frase 1: il fatto o concetto con dato quantitativo se disponibile
+- Frase 2: CTA specifica verso Telegram. Formato: "Sul canale: [cosa specifico oggi]. Link in bio."
+
 Rispondi SOLO con JSON valido, nessun testo extra:
 {{
-  "headline": "...",      // max 8 parole, impatto immediato
-  "subline": "...",       // max 15 parole, contestualizza o approfondisce
+  "headline": "...",      // max 8 parole, senza punto esclamativo
+  "subline": "...",       // max 15 parole, senza emoji
   "accent_word": "...",   // UNA parola o numero dell'headline da colorare in gold
-  "caption": "...",       // 1-2 frasi per la caption Instagram, tono Kairós
-  "hashtags": ["...", "..."]  // 5 hashtag rilevanti senza #, lowercase
+  "caption": "...",       // 1-2 frasi seguendo la struttura sopra
+  "hashtags": ["macroinvestor", "macroresearch", "kairosmacro"]
 }}"""
 
         response = client.messages.create(
@@ -243,8 +253,10 @@ Rispondi SOLO con JSON valido, nessun testo extra:
             h = str(h).lower().replace(" ", "").replace("-", "").replace("#", "")
             if h:
                 hashtags.append(h)
-        if "kairos" not in hashtags:
-            hashtags.append("kairos")
+        # Garantisce sempre i tre hashtag Kairós standard
+        for std in ["macroinvestor", "macroresearch", "kairosmacro"]:
+            if std not in hashtags:
+                hashtags.append(std)
 
         return StoryContent(
             theme=theme,

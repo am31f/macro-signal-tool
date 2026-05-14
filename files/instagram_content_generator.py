@@ -168,8 +168,8 @@ Genera il contenuto per un carosello Instagram di 5 slide in formato JSON ESATTO
   "cta_question": "Ogni mattina analizziamo l'evento che muoverà i mercati",
   "cta_body": "Su Telegram analizziamo anche i titoli azionari e gli strumenti potenzialmente impattati dall'evento del giorno.",
   "cta_channel": "@Kairós su Telegram",
-  "caption": "Caption Instagram di 150-200 parole in italiano. Tono editoriale Kairós. Inizia con la notizia, spiega perché conta, accenna ai settori impattati. Chiudi con invito a seguire per approfondire. Nessun consiglio di acquisto. Nessuna emoji. Separatori di paragrafo con doppio a capo.",
-  "hashtags": ["macro", "finanza", "mercati", "geopolitica", "trading", "investimenti", "economia", "borsa", "notizie", "kairos"]
+  "caption": "Scrivi la caption Instagram seguendo ESATTAMENTE questa struttura in tre blocchi separati da doppio a capo:\\n\\nBLOCCO 1 — CONTESTO (2-3 frasi): Spiega il fatto con numeri precisi. Non ripetere il titolo. Aggiungi il dato quantitativo chiave (es. variazione percentuale, livello assoluto, confronto con consenso). Esempio: 'Il FOMC ha lasciato i tassi al 5.25% per il quarto meeting consecutivo. Il comunicato rimuove la frase additional firming may be appropriate — un cambio di postura, non di numeri. Il mercato dei futures prezza ora il primo taglio a settembre con probabilità del 68%.'\\n\\nBLOCCO 2 — PERCHÉ CONTA (1-2 frasi): Impatto cross-asset o macro. Cosa cambia per chi investe. Senza consiglio operativo.\\n\\nBLOCCO 3 — CTA SPECIFICA (1 frase): Non generica. Cita cosa c'è nel canale Telegram che qui non c'è. Formato fisso: 'Sul canale: [cosa specifico]. Link in bio.'\\n\\nVincoli: nessuna emoji, nessun punto esclamativo, nessun consiglio di acquisto, tono editoriale sobrio. Max 220 parole totali.",
+  "hashtags": ["macroinvestor", "macroresearch", "ratesmarkets", "kairosmacro"]
 }}
 
 Adatta tutti i campi alla notizia specifica. Sii preciso e informativo. Rispondi SOLO con il JSON, nessun testo aggiuntivo."""
@@ -395,6 +395,152 @@ def _run_test():
         print("❌ Generazione fallita")
 
     print("\n✅ Test completato.")
+
+
+# ─── Contenuto PEAD per Instagram ────────────────────────────────────────────
+
+def generate_pead_carousel_content(pead_signal: dict) -> Optional[IGCarouselContent]:
+    """
+    Genera contenuto carosello Instagram per un segnale PEAD.
+    Badge: [EARNINGS] giallo — distinto da [MACRO] blu.
+
+    Args:
+        pead_signal: dict da PEADTradeReady (pead_pipeline.py)
+
+    Returns:
+        IGCarouselContent con eyebrow "EARNINGS · <SETTORE>" oppure None
+    """
+    from datetime import datetime
+
+    ticker      = pead_signal.get("ticker", "?")
+    company     = pead_signal.get("company_name", ticker)
+    direction   = pead_signal.get("direction", "LONG")
+    sue         = pead_signal.get("sue_score", 0)
+    eps_surp    = pead_signal.get("eps_surprise_pct", 0)
+    sector      = pead_signal.get("sector", "Unknown")
+    signal_id   = pead_signal.get("signal_id", "K-PEAD")
+    earn_date   = pead_signal.get("earnings_date", "")
+    macro_boost = pead_signal.get("macro_regime_boost", False)
+    macro_note  = pead_signal.get("macro_regime_note", "")
+    conf        = pead_signal.get("confidence_base", 0)
+
+    months_it = ["gennaio","febbraio","marzo","aprile","maggio","giugno",
+                 "luglio","agosto","settembre","ottobre","novembre","dicembre"]
+    today = datetime.now()
+    date_label = f"{today.day} {months_it[today.month-1]} {today.year}"
+
+    eps_sign = "+" if eps_surp >= 0 else ""
+    dir_label = "rialzo" if direction == "LONG" else "ribasso"
+    dir_sector = "beneficiano" if direction == "LONG" else "subiscono pressione"
+
+    # Genera con Claude se disponibile, altrimenti mock
+    if ANTHROPIC_AVAILABLE and os.getenv("ANTHROPIC_API_KEY"):
+        try:
+            client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+            prompt = f"""Sei il content team di Kairós. Genera il contenuto per un carosello Instagram
+su un segnale PEAD (Post-Earnings Announcement Drift).
+
+Segnale:
+- Ticker: {ticker} ({company})
+- Settore: {sector}
+- Direzione: {direction}
+- Sorpresa EPS: {eps_sign}{eps_surp:.1f}%
+- SUE score: {sue:.2f} (significativo se >= 2)
+- Data earnings: {earn_date}
+- Macro regime boost: {macro_boost} {('— ' + macro_note) if macro_boost else ''}
+
+Genera un JSON con questa struttura (senza markdown, solo JSON valido):
+{{
+  "hook_title": "titolo slide 1, max 55 char, in italiano",
+  "hook_subtitle": "sottotitolo, max 80 char",
+  "context_stats": [
+    {{"value": "...", "label": "..."}},
+    {{"value": "...", "label": "..."}},
+    {{"value": "...", "label": "..."}}
+  ],
+  "sectors_benefiting": "2-3 settori/ETF che {dir_sector}",
+  "sectors_pressure": "2-3 settori/ETF opposti",
+  "caption": "caption Instagram max 800 char, tono Kairós — sobrio, preciso, no hype",
+  "hashtags": ["earnings", "analisi", ...] // max 10 tag
+}}
+
+Tono Kairós: preciso sui numeri, sobrio sugli aggettivi, no punti esclamativi, no emoji."""
+
+            resp = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=800,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            raw = resp.content[0].text.strip()
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+                raw = raw.strip()
+            parsed = json.loads(raw)
+
+            return IGCarouselContent(
+                eyebrow=f"EARNINGS · {sector.upper()[:20]}",
+                hook_title=parsed.get("hook_title", f"{ticker} batte le stime EPS"),
+                hook_subtitle=parsed.get("hook_subtitle", f"Sorpresa {eps_sign}{eps_surp:.1f}% — cosa cambia per il titolo"),
+                date_label=date_label,
+                context_title="Il dato che conta",
+                context_stats=parsed.get("context_stats", [
+                    {"value": f"{eps_sign}{eps_surp:.1f}%", "label": "Sorpresa EPS"},
+                    {"value": f"{sue:.1f}σ", "label": "SUE score"},
+                    {"value": f"{int(conf*100)}%", "label": "Confidence"},
+                ]),
+                historical_title="Post-earnings drift — cosa dice la ricerca",
+                historical_rows=[
+                    {"label": "Drift medio 30gg (SUE>2)", "value": "+4% / +8%", "positive": direction == "LONG"},
+                    {"label": "Win rate storico", "value": "62%", "positive": True},
+                    {"label": "R/R obiettivo", "value": "2:1", "positive": True},
+                ],
+                sectors_title="Cosa osserviamo",
+                bullish_sectors=parsed.get("sectors_benefiting", sector),
+                bearish_sectors=parsed.get("sectors_pressure", "–"),
+                cta_question="Segui i segnali PEAD su Telegram",
+                cta_body="I trade operativi con entry, stop e target sono disponibili nel canale Telegram riservato agli iscritti.",
+                cta_channel="@Kairós su Telegram",
+                caption=parsed.get("caption", f"Earnings {ticker}: sorpresa {eps_sign}{eps_surp:.1f}%\n\nSegnale PEAD attivo — {direction} con drift atteso."),
+                hashtags=parsed.get("hashtags", ["earnings", "analisi", "borsa", "kairos", "pead"]),
+                source_label="Yahoo Finance · Consensus analisti",
+                event_category="EARNINGS_PEAD",
+                signal_id=signal_id,
+            )
+        except Exception as e:
+            logger.warning(f"Errore generazione PEAD content: {e} — uso mock")
+
+    # Mock fallback
+    return IGCarouselContent(
+        eyebrow=f"EARNINGS · {sector.upper()[:20]}",
+        hook_title=f"{ticker}: sorpresa EPS {eps_sign}{eps_surp:.1f}%",
+        hook_subtitle=f"Il titolo potrebbe muoversi al {dir_label} nelle prossime settimane.",
+        date_label=date_label,
+        context_title="Il dato che conta",
+        context_stats=[
+            {"value": f"{eps_sign}{eps_surp:.1f}%", "label": "Sorpresa EPS"},
+            {"value": f"{sue:.1f}σ", "label": "SUE score"},
+            {"value": f"{int(conf*100)}%", "label": "Confidence"},
+        ],
+        historical_title="Post-earnings drift — cosa dice la ricerca",
+        historical_rows=[
+            {"label": "Drift medio 30gg (SUE>2)", "value": "+4% / +8%", "positive": direction == "LONG"},
+            {"label": "Win rate storico PEAD", "value": "62%", "positive": True},
+            {"label": "R/R obiettivo", "value": "2:1", "positive": True},
+        ],
+        sectors_title="Cosa osserviamo",
+        bullish_sectors=sector if direction == "LONG" else "–",
+        bearish_sectors=sector if direction == "SHORT" else "–",
+        cta_question="Segui i segnali PEAD su Telegram",
+        cta_body="I trade operativi con entry, stop e target sono nel canale riservato.",
+        cta_channel="@Kairós su Telegram",
+        caption=f"Earnings {ticker} ({company}): sorpresa EPS {eps_sign}{eps_surp:.1f}%.\n\nSUE score {sue:.1f}σ — segnale PEAD {direction}.\n\nContenuto informativo — non è consulenza finanziaria.",
+        hashtags=["earnings", "pead", "analisi", "borsa", "kairos", "mercati"],
+        source_label="Yahoo Finance · Consensus analisti",
+        event_category="EARNINGS_PEAD",
+        signal_id=signal_id,
+    )
 
 
 if __name__ == "__main__":

@@ -385,7 +385,7 @@ async def _scheduled_price_update():
             with _sqlite3.connect(DB_PATH) as conn:
                 conn.row_factory = _sqlite3.Row
                 rows = conn.execute("""
-                    SELECT id, ticker, direction, open_price, open_date,
+                    SELECT id, ticker, direction, entry_price, entry_date,
                            hold_days_target, strategy
                     FROM positions
                     WHERE status = 'open' AND strategy = 'PEAD'
@@ -393,7 +393,7 @@ async def _scheduled_price_update():
 
             today = _date.today()
             for row in rows:
-                open_date = _date.fromisoformat(str(row["open_date"])[:10])
+                open_date = _date.fromisoformat(str(row["entry_date"])[:10])
                 hold_days = int(row["hold_days_target"] or 30)
                 expiry = open_date + _td(days=hold_days)
 
@@ -623,7 +623,7 @@ async def _scheduled_instagram_comments():
         return
     logger.info("Instagram: elaborazione commenti...")
     try:
-        stats = await process_all_recent_posts(days=1, dry_run=False)
+        stats = await process_recent_comments(days=1, dry_run=False)
         logger.info(f"Instagram commenti: {stats}")
     except Exception as e:
         logger.error(f"Scheduled Instagram comments error: {e}")
@@ -1539,7 +1539,7 @@ async def instagram_process_comments(days: int = 1, dry_run: bool = True):
     if not _instagram_available:
         return {"status": "NOT_CONFIGURED", "message": "Instagram non configurato."}
     try:
-        stats = await process_all_recent_posts(days=days, dry_run=dry_run)
+        stats = await process_recent_comments(days=days, dry_run=dry_run)
         return {
             "status": "ok",
             "dry_run": dry_run,

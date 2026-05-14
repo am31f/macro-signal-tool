@@ -73,7 +73,7 @@ FALLBACK_CONTENT = {
                 "Ogni mattina analizziamo quale evento può muovere questo meccanismo. "
                 "Segnali operativi su @Kairós."
             ),
-            "hashtags": ["macro", "dollaro", "forex", "economia", "finanza", "kairos"],
+            "hashtags": ["macroinvestor", "macroresearch", "kairosmacro"],
         },
         {
             "headline": "Cosa muove il prezzo del petrolio?",
@@ -86,7 +86,7 @@ FALLBACK_CONTENT = {
                 "il movimento è violento. È quello che monitoriamo ogni mattina.\n\n"
                 "Segnali operativi su @Kairós."
             ),
-            "hashtags": ["petrolio", "opec", "commodities", "macro", "finanza", "kairos"],
+            "hashtags": ["macroinvestor", "macroresearch", "kairosmacro"],
         },
         {
             "headline": "Cosa succede ai mercati quando la Fed taglia?",
@@ -100,7 +100,7 @@ FALLBACK_CONTENT = {
                 "Ogni mattina analizziamo il regime macro attuale. "
                 "Segnali su @Kairós."
             ),
-            "hashtags": ["fed", "tassi", "macro", "mercati", "banca centrale", "kairos"],
+            "hashtags": ["macroinvestor", "macroresearch", "kairosmacro"],
         },
     ],
     "EVENTO_STORICO": [
@@ -118,23 +118,21 @@ FALLBACK_CONTENT = {
                 "leggere i segnali prima che diventino notizia.\n\n"
                 "Canale operativo: @Kairós"
             ),
-            "hashtags": ["brexit", "sterlina", "storia", "mercati", "macro", "kairos"],
+            "hashtags": ["macroinvestor", "macroresearch", "kairosmacro"],
         },
         {
             "headline": "Lehman Brothers: il segnale c'era.",
             "subline": "Settembre 2008 — cosa lo annunciò.",
             "accent_word": "Lehman",
             "caption": (
-                "Prima del crollo di Lehman (15 settembre 2008), "
-                "3 segnali erano già visibili:\n"
-                "• Spread interbancari ai massimi storici\n"
-                "• Crollo delle azioni bancarie (-40% da gennaio)\n"
-                "• Credit default swap di Lehman a 700bps\n\n"
-                "Il mercato non credeva che lasciassero fallire una banca sistemica. "
-                "Aveva torto.\n\n"
-                "I segnali macro parlano — Kairós li traduce ogni mattina. @Kairós"
+                "Prima del crollo di Lehman il 15 settembre 2008, tre segnali erano visibili da settimane: "
+                "gli spread interbancari ai massimi storici, le azioni bancarie a −40% da gennaio, "
+                "i credit default swap di Lehman a 700bps.\n\n"
+                "Il mercato non credeva che avrebbero lasciato fallire una banca sistemica. "
+                "Aveva torto. Chi leggeva i segnali macro aveva già ridotto l'esposizione.\n\n"
+                "Sul canale: l'analisi del regime macro attuale e i segnali attivi. Link in bio."
             ),
-            "hashtags": ["lehman", "2008", "crisi", "macro", "storia", "kairos"],
+            "hashtags": ["macroinvestor", "macroresearch", "kairosmacro"],
         },
         {
             "headline": "Black Monday 1987: -22% in un giorno.",
@@ -150,7 +148,7 @@ FALLBACK_CONTENT = {
                 "possono diventare la causa del panico che cercano di evitare.\n\n"
                 "Segnali macro ogni mattina — @Kairós"
             ),
-            "hashtags": ["black monday", "1987", "borsa", "storia", "mercati", "kairos"],
+            "hashtags": ["macroinvestor", "macroresearch", "kairosmacro"],
         },
     ],
     "METODO_KAIROS": [
@@ -159,32 +157,31 @@ FALLBACK_CONTENT = {
             "subline": "5 filtri. Solo i migliori passano.",
             "accent_word": "segnale",
             "caption": (
-                "Ogni mattina analizziamo centinaia di notizie. "
-                "Un segnale operativo deve superare 5 filtri:\n\n"
-                "1️⃣ Materialità — può spostare variabili macro misurabili?\n"
-                "2️⃣ Novità — è già prezzato dal mercato?\n"
-                "3️⃣ Causalità — c'è una catena causale chiara verso un asset?\n"
-                "4️⃣ Timing — l'effetto è immediato o ritardato?\n"
-                "5️⃣ Regime — il contesto macro supporta la direzione?\n\n"
-                "Solo i segnali che passano tutti e 5 arrivano su @Kairós."
+                "Ogni mattina il sistema analizza centinaia di notizie. "
+                "Un segnale operativo deve superare cinque filtri in sequenza: "
+                "materialità (può spostare variabili macro misurabili), novità (è già prezzato), "
+                "causalità (c'è un percorso chiaro verso un asset), timing (effetto immediato o ritardato), "
+                "regime (il contesto macro supporta la direzione).\n\n"
+                "Solo i segnali che superano tutti e cinque vengono pubblicati. "
+                "La soglia di confidence score è 70 su 100.\n\n"
+                "Sul canale: i segnali attivi questa settimana con entry e conviction. Link in bio."
             ),
-            "hashtags": ["metodo", "segnali", "macro", "finanza", "analisi", "kairos"],
+            "hashtags": ["macroinvestor", "macroresearch", "kairosmacro"],
         },
         {
             "headline": "Cos'è il confidence score.",
             "subline": "Il numero che decide se un segnale vale.",
             "accent_word": "confidence score",
             "caption": (
-                "Ogni segnale Kairós ha un confidence score da 0 a 100.\n\n"
-                "È la sintesi di 5 metriche:\n"
-                "• Materiality score (quanto sposta i mercati)\n"
-                "• Novelty score (quanto è nuovo vs già prezzato)\n"
-                "• Causal chain clarity (quanto è chiaro il percorso causa-effetto)\n"
-                "• Timing precision (immediato vs ritardato)\n"
-                "• Regime alignment (il contesto macro supporta?)\n\n"
-                "Pubblichiamo solo i segnali con score > 70. @Kairós"
+                "Ogni segnale Kairós ha un confidence score da 0 a 100. "
+                "È la sintesi di cinque metriche: materialità (quanto sposta i mercati), "
+                "novità (quanto è già prezzato), chiarezza causale (percorso causa-effetto), "
+                "timing (effetto immediato o ritardato), allineamento di regime (il contesto macro supporta).\n\n"
+                "Pubblichiamo solo i segnali con score superiore a 70. "
+                "Non per esclusività — per disciplina.\n\n"
+                "Sul canale: i segnali attivi con confidence score e conviction. Link in bio."
             ),
-            "hashtags": ["metodo", "confidence", "segnali", "macro", "kairos", "finanza"],
+            "hashtags": ["macroinvestor", "macroresearch", "kairosmacro"],
         },
         {
             "headline": "Perché usiamo notizie, non grafici.",
@@ -200,7 +197,7 @@ FALLBACK_CONTENT = {
                 "Claude AI classifica ogni notizia per materialità e novità.\n\n"
                 "Il segnale arriva su @Kairós prima che il mercato si muova."
             ),
-            "hashtags": ["metodo", "notizie", "macro", "AI", "finanza", "kairos"],
+            "hashtags": ["macroinvestor", "macroresearch", "kairosmacro"],
         },
     ],
 }
@@ -252,20 +249,32 @@ def _generate_with_haiku(theme: str, top_news: Optional[str] = None) -> Optional
             ),
         }
 
-        prompt = f"""Sei il content creator di Kairós, un tool di analisi macro-geopolitica per Instagram.
-Brand voice: preciso, sobrio, nessun punto esclamativo, nessun hype. Come un central banker che legge romanzi.
-Tagline: "We don't predict the market. We mark the moment."
+        prompt = f"""Sei il redattore editoriale di Kairós — una pubblicazione macro finanziaria italiana su Instagram.
+
+TONO DI VOCE (regole assolute):
+- Nessuna emoji, nessun punto esclamativo, nessun linguaggio hype
+- Nessun elenco puntato con numeri o simboli (scrivi in prosa)
+- Nessun consiglio di acquisto o promessa di rendimento
+- Numeri precisi: non "i tassi sono saliti" ma "i Fed Funds sono al 5.25%"
+- Tono: "un central banker che legge romanzi" — autorevole, sobrio, preciso
+- Tagline: "We don't predict the market. We mark the moment."
 {news_context}
 
 Tema di oggi: {theme_instructions[theme]}
 
+STRUTTURA CAPTION (segui esattamente):
+- BLOCCO 1 (2 frasi): il fatto o concetto con dato quantitativo preciso
+- BLOCCO 2 (1-2 frasi): perché conta oggi, cosa cambia per chi investe
+- BLOCCO 3 (1 frase): CTA specifica verso Telegram — non generica, cita cosa c'è nel canale che qui non c'è. Formato: "Sul canale: [cosa specifico]. Link in bio."
+- Blocchi separati da doppio a capo. Max 180 parole totali.
+
 Genera un post Instagram con questo formato JSON esatto (nessun testo aggiuntivo):
 {{
-  "headline": "<frase di max 55 caratteri — testo grande sul post>",
+  "headline": "<frase di max 55 caratteri — testo grande sul post, senza punto esclamativo>",
   "subline": "<frase di max 75 caratteri — testo piccolo sotto, può essere stringa vuota>",
   "accent_word": "<una parola del headline da colorare in oro, oppure stringa vuota>",
-  "caption": "<testo completo sotto il post Instagram, 3-5 paragrafi, max 800 chars, chiudi sempre con menzione @Kairós>",
-  "hashtags": ["<5-7 hashtag senza #, minuscolo>"]
+  "caption": "<testo completo seguendo la struttura a 3 blocchi indicata sopra>",
+  "hashtags": ["macroinvestor", "macroresearch", "kairosmacro"]
 }}"""
 
         response = client.messages.create(
