@@ -172,14 +172,40 @@ def _size_pead_trade(signal: PEADSignal, nav_eur: float, vix: float) -> Optional
     else:
         kelly_quality = "WEAK"
 
-    # Stop e target calcolati dal prezzo corrente
+    # Stop e target calcolati sul close del giorno degli earnings (T+0),
+    # non sul prezzo live al momento dello scan (che può essere giorni dopo).
+    # Questo garantisce che stop/target siano coerenti con l'entry di T+1.
     price = signal.current_price
+    earnings_close = price  # fallback: usa prezzo live se storico non disponibile
+    if YFINANCE_AVAILABLE:
+        try:
+            from datetime import date as _date, timedelta as _td
+            import yfinance as _yf
+            t0 = signal.earnings_date  # stringa "YYYY-MM-DD"
+            t0_dt = _date.fromisoformat(t0)
+            t1_dt = t0_dt + _td(days=1)
+            hist = _yf.download(
+                signal.ticker,
+                start=t0_dt.strftime("%Y-%m-%d"),
+                end=t1_dt.strftime("%Y-%m-%d"),
+                auto_adjust=True,
+                progress=False,
+            )
+            if not hist.empty:
+                if hasattr(hist.columns, "get_level_values"):
+                    hist.columns = hist.columns.get_level_values(0)
+                earnings_close = float(hist["Close"].iloc[-1])
+                logger.debug(f"  {signal.ticker}: close T+0 = {earnings_close:.3f} (live = {price:.3f})")
+        except Exception as e:
+            logger.debug(f"  {signal.ticker}: errore fetch close T+0 — uso prezzo live ({e})")
+
+    ref_price = earnings_close
     if signal.direction == "LONG":
-        stop_price   = round(price * (1 - signal.stop_loss_pct / 100), 4)
-        target_price = round(price * (1 + signal.target_pct / 100), 4)
+        stop_price   = round(ref_price * (1 - signal.stop_loss_pct / 100), 4)
+        target_price = round(ref_price * (1 + signal.target_pct / 100), 4)
     else:
-        stop_price   = round(price * (1 + signal.stop_loss_pct / 100), 4)
-        target_price = round(price * (1 - signal.target_pct / 100), 4)
+        stop_price   = round(ref_price * (1 + signal.stop_loss_pct / 100), 4)
+        target_price = round(ref_price * (1 - signal.target_pct / 100), 4)
 
     return PEADTradeReady(
         signal_id=signal.signal_id,
