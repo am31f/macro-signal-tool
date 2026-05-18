@@ -249,7 +249,7 @@ def _generate_with_haiku(theme: str, top_news: Optional[str] = None) -> Optional
             ),
         }
 
-        prompt = f"""Sei il redattore editoriale di Kairós — una pubblicazione macro finanziaria italiana su Instagram.
+        AFTERNOON_SYSTEM = """Sei il redattore editoriale di Kairós — una pubblicazione macro finanziaria italiana su Instagram.
 
 TONO DI VOCE (regole assolute):
 - Nessuna emoji, nessun punto esclamativo, nessun linguaggio hype
@@ -258,9 +258,6 @@ TONO DI VOCE (regole assolute):
 - Numeri precisi: non "i tassi sono saliti" ma "i Fed Funds sono al 5.25%"
 - Tono: "un central banker che legge romanzi" — autorevole, sobrio, preciso
 - Tagline: "We don't predict the market. We mark the moment."
-{news_context}
-
-Tema di oggi: {theme_instructions[theme]}
 
 STRUTTURA CAPTION (segui esattamente):
 - BLOCCO 1 (2 frasi): il fatto o concetto con dato quantitativo preciso
@@ -269,17 +266,23 @@ STRUTTURA CAPTION (segui esattamente):
 - Blocchi separati da doppio a capo. Max 180 parole totali.
 
 Genera un post Instagram con questo formato JSON esatto (nessun testo aggiuntivo):
-{{
+{
   "headline": "<frase di max 55 caratteri — testo grande sul post, senza punto esclamativo>",
   "subline": "<frase di max 75 caratteri — testo piccolo sotto, può essere stringa vuota>",
   "accent_word": "<una parola del headline da colorare in oro, oppure stringa vuota>",
   "caption": "<testo completo seguendo la struttura a 3 blocchi indicata sopra>",
   "hashtags": ["macroinvestor", "macroresearch", "kairosmacro"]
-}}"""
+}"""
+
+        prompt = f"""Tema di oggi: {theme_instructions[theme]}
+{news_context}
+
+Genera il post Instagram seguendo esattamente il formato JSON definito."""
 
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=800,
+            system=[{"type": "text", "text": AFTERNOON_SYSTEM, "cache_control": {"type": "ephemeral"}}],
             messages=[{"role": "user", "content": prompt}]
         )
 

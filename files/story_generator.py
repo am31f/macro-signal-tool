@@ -206,7 +206,7 @@ def _generate_with_haiku(theme: str, signal_headline: str) -> Optional[StoryCont
 
         instruction = theme_instructions.get(theme, theme_instructions["DATO_MACRO"])
 
-        prompt = f"""Sei il redattore editoriale di Kairós — pubblicazione macro finanziaria italiana su Instagram.
+        STORY_SYSTEM = """Sei il redattore editoriale di Kairós — pubblicazione macro finanziaria italiana su Instagram.
 
 TONO DI VOCE (regole assolute):
 - Nessuna emoji nel testo — né nell'headline, né nella caption, né nella subline
@@ -214,26 +214,29 @@ TONO DI VOCE (regole assolute):
 - Numeri precisi e verificabili
 - Tono: "un central banker che legge romanzi" — sobrio, autorevole, preciso
 
-Evento/segnale del giorno: "{signal_headline}"
-Tema Story: {label}
-Istruzione: {instruction}
-
 STRUTTURA CAPTION (1-2 frasi):
 - Frase 1: il fatto o concetto con dato quantitativo se disponibile
 - Frase 2: CTA specifica verso Telegram. Formato: "Sul canale: [cosa specifico oggi]. Link in bio."
 
 Rispondi SOLO con JSON valido, nessun testo extra:
-{{
-  "headline": "...",      // max 8 parole, senza punto esclamativo
-  "subline": "...",       // max 15 parole, senza emoji
-  "accent_word": "...",   // UNA parola o numero dell'headline da colorare in gold
-  "caption": "...",       // 1-2 frasi seguendo la struttura sopra
+{
+  "headline": "...",
+  "subline": "...",
+  "accent_word": "...",
+  "caption": "...",
   "hashtags": ["macroinvestor", "macroresearch", "kairosmacro"]
-}}"""
+}"""
+
+        prompt = f"""Evento/segnale del giorno: "{signal_headline}"
+Tema Story: {label}
+Istruzione: {instruction}
+
+max 8 parole nell'headline (senza punto esclamativo), max 15 parole nella subline (senza emoji), UNA parola/numero dell'headline come accent_word."""
 
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=400,
+            system=[{"type": "text", "text": STORY_SYSTEM, "cache_control": {"type": "ephemeral"}}],
             messages=[{"role": "user", "content": prompt}],
         )
         raw = response.content[0].text.strip()

@@ -46,7 +46,7 @@ logging.basicConfig(
 logger = logging.getLogger("trade_structurer")
 
 # ─── Costanti ─────────────────────────────────────────────────────────────────
-MODEL = "claude-sonnet-4-20250514"
+MODEL = "claude-haiku-4-5-20251001"
 MAX_RETRIES = 3
 RETRY_DELAY = 5
 DATA_DIR = Path(__file__).parent
@@ -272,8 +272,8 @@ def _call_claude(client: anthropic.Anthropic, user_prompt: str) -> str:
         try:
             response = client.messages.create(
                 model=MODEL,
-                max_tokens=1500,
-                system=SYSTEM_PROMPT,
+                max_tokens=900,
+                system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
                 messages=[{"role": "user", "content": user_prompt}],
             )
             return response.content[0].text.strip()

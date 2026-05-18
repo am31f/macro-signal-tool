@@ -131,11 +131,40 @@ def generate_carousel_content(
         bullish_names = ", ".join([i.get("name", i.get("ticker", "")) for i in bullish[:3]])
         bearish_names = ", ".join([i.get("name", i.get("ticker", "")) for i in bearish[:3]])
 
-        prompt = f"""Sei il redattore editoriale di Kairós, una pubblicazione macro finanziaria italiana.
+        CAROUSEL_SYSTEM = """Sei il redattore editoriale di Kairós, una pubblicazione macro finanziaria italiana.
 Il tuo tono: preciso, sobrio, autorevole. Nessun punto esclamativo. Nessuna emoji. Nessun linguaggio hype.
 Sei come un central banker che legge romanzi: preciso sui numeri, elegante nelle parole.
 
-NOTIZIA:
+Genera contenuto per caroselli Instagram di 5 slide in formato JSON ESATTO.
+Struttura JSON richiesta:
+{
+  "eyebrow": "CATEGORIA · SOTTOCATEGORIA (max 30 char, maiuscolo, es. GEOPOLITICA · ENERGIA)",
+  "hook_title": "Titolo che ferma lo scroll (max 55 char, in italiano, sobrio, senza ! )",
+  "hook_subtitle": "Sottotitolo che introduce il tema (max 80 char)",
+  "context_title": "Titolo slide 2 — il contesto (max 40 char)",
+  "context_stats": [
+    {"value": "20%", "label": "del petrolio mondiale transita da Hormuz"},
+    {"value": "17M", "label": "barili al giorno riforniscono Europa e Asia"},
+    {"value": "48h", "label": "di chiusura bastano per far salire il Brent"}
+  ],
+  "historical_title": "In eventi simili, i mercati si sono mossi così",
+  "historical_rows": [
+    {"label": "Petrolio (Brent)", "value": "+25% / +35%", "positive": true},
+    {"label": "Titoli energia", "value": "+10% / +18%", "positive": true},
+    {"label": "Compagnie aeree", "value": "-8% / -15%", "positive": false}
+  ],
+  "sectors_title": "Cosa tenere d'occhio",
+  "bullish_sectors": "Energia integrata, produttori petrolio USA, oro",
+  "bearish_sectors": "Compagnie aeree, shipping, manifattura energy-intensive",
+  "cta_question": "Ogni mattina analizziamo l'evento che muoverà i mercati",
+  "cta_body": "Su Telegram analizziamo anche i titoli azionari e gli strumenti potenzialmente impattati dall'evento del giorno.",
+  "cta_channel": "@Kairós su Telegram",
+  "caption": "Caption in 3 blocchi separati da doppio a capo. BLOCCO 1 (2-3 frasi): fatto con numeri precisi. BLOCCO 2 (1-2 frasi): impatto cross-asset, cosa cambia per chi investe. BLOCCO 3 (1 frase): CTA specifica verso Telegram. Formato: 'Sul canale: [cosa specifico]. Link in bio.' Vincoli: nessuna emoji, nessun punto esclamativo, max 220 parole.",
+  "hashtags": ["macroinvestor", "macroresearch", "ratesmarkets", "kairosmacro"]
+}
+Adatta tutti i campi alla notizia specifica. Rispondi SOLO con il JSON, nessun testo aggiuntivo."""
+
+        prompt = f"""NOTIZIA:
 Titolo: {headline}
 Categoria: {category}
 Catena causale: {causal_chain}
@@ -144,39 +173,12 @@ Tesi principale: {primary_thesis}
 Strumenti beneficio: {bullish_names or "da definire"}
 Strumenti pressione: {bearish_names or "da definire"}
 
-Genera il contenuto per un carosello Instagram di 5 slide in formato JSON ESATTO:
-
-{{
-  "eyebrow": "CATEGORIA · SOTTOCATEGORIA (max 30 char, maiuscolo, es. GEOPOLITICA · ENERGIA)",
-  "hook_title": "Titolo che ferma lo scroll (max 55 char, in italiano, sobrio, senza ! )",
-  "hook_subtitle": "Sottotitolo che introduce il tema (max 80 char)",
-  "context_title": "Titolo slide 2 — il contesto (max 40 char)",
-  "context_stats": [
-    {{"value": "20%", "label": "del petrolio mondiale transita da Hormuz"}},
-    {{"value": "17M", "label": "barili al giorno riforniscono Europa e Asia"}},
-    {{"value": "48h", "label": "di chiusura bastano per far salire il Brent"}}
-  ],
-  "historical_title": "In eventi simili, i mercati si sono mossi così",
-  "historical_rows": [
-    {{"label": "Petrolio (Brent)", "value": "+25% / +35%", "positive": true}},
-    {{"label": "Titoli energia", "value": "+10% / +18%", "positive": true}},
-    {{"label": "Compagnie aeree", "value": "-8% / -15%", "positive": false}}
-  ],
-  "sectors_title": "Cosa tenere d'occhio",
-  "bullish_sectors": "Energia integrata, produttori petrolio USA, oro",
-  "bearish_sectors": "Compagnie aeree, shipping, manifattura energy-intensive",
-  "cta_question": "Ogni mattina analizziamo l'evento che muoverà i mercati",
-  "cta_body": "Su Telegram analizziamo anche i titoli azionari e gli strumenti potenzialmente impattati dall'evento del giorno.",
-  "cta_channel": "@Kairós su Telegram",
-  "caption": "Scrivi la caption Instagram seguendo ESATTAMENTE questa struttura in tre blocchi separati da doppio a capo:\\n\\nBLOCCO 1 — CONTESTO (2-3 frasi): Spiega il fatto con numeri precisi. Non ripetere il titolo. Aggiungi il dato quantitativo chiave (es. variazione percentuale, livello assoluto, confronto con consenso). Esempio: 'Il FOMC ha lasciato i tassi al 5.25% per il quarto meeting consecutivo. Il comunicato rimuove la frase additional firming may be appropriate — un cambio di postura, non di numeri. Il mercato dei futures prezza ora il primo taglio a settembre con probabilità del 68%.'\\n\\nBLOCCO 2 — PERCHÉ CONTA (1-2 frasi): Impatto cross-asset o macro. Cosa cambia per chi investe. Senza consiglio operativo.\\n\\nBLOCCO 3 — CTA SPECIFICA (1 frase): Non generica. Cita cosa c'è nel canale Telegram che qui non c'è. Formato fisso: 'Sul canale: [cosa specifico]. Link in bio.'\\n\\nVincoli: nessuna emoji, nessun punto esclamativo, nessun consiglio di acquisto, tono editoriale sobrio. Max 220 parole totali.",
-  "hashtags": ["macroinvestor", "macroresearch", "ratesmarkets", "kairosmacro"]
-}}
-
-Adatta tutti i campi alla notizia specifica. Sii preciso e informativo. Rispondi SOLO con il JSON, nessun testo aggiuntivo."""
+Genera il contenuto per il carosello Instagram seguendo esattamente la struttura JSON definita."""
 
         response = client.messages.create(
             model=MODEL,
-            max_tokens=2000,
+            max_tokens=1200,
+            system=[{"type": "text", "text": CAROUSEL_SYSTEM, "cache_control": {"type": "ephemeral"}}],
             messages=[{"role": "user", "content": prompt}],
         )
 

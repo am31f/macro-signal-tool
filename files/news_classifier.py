@@ -43,7 +43,7 @@ log = logging.getLogger("news_classifier")
 
 # ─── Modelli ──────────────────────────────────────────────────────────────────
 MODEL_PRESCREENING = "claude-haiku-4-5-20251001"   # Livello 1 — economico
-MODEL_ANALYSIS     = "claude-sonnet-4-20250514"     # Livello 2 — completo
+MODEL_ANALYSIS     = "claude-haiku-4-5-20251001"    # Livello 2 — economico (era Sonnet)
 
 # ─── Client Anthropic ─────────────────────────────────────────────────────────
 def get_client() -> anthropic.Anthropic:
@@ -133,7 +133,7 @@ def prescreen_news(headline: str, client: anthropic.Anthropic) -> tuple[bool, st
         response = client.messages.create(
             model=MODEL_PRESCREENING,
             max_tokens=80,
-            system=PRESCREENING_SYSTEM,
+            system=[{"type": "text", "text": PRESCREENING_SYSTEM, "cache_control": {"type": "ephemeral"}}],
             messages=[{"role": "user", "content": f"HEADLINE: {headline}"}]
         )
         raw = response.content[0].text.strip()
@@ -169,7 +169,7 @@ class ClassificationResult:
     macro_regime: str
     # Metadata
     classified_at: str = ""
-    model_used: str = "claude-sonnet-4-20250514"
+    model_used: str = "claude-haiku-4-5-20251001"
     raw_response: str = ""
     parse_error: bool = False
     prescreened_out: bool = False   # True = scartata da Haiku al Livello 1
@@ -215,9 +215,9 @@ Classifica questa notizia secondo il formato JSON richiesto."""
     for attempt in range(max_retries + 1):
         try:
             response = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=600,
-                system=SYSTEM_PROMPT,
+                model=MODEL_ANALYSIS,
+                max_tokens=400,
+                system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
                 messages=[{"role": "user", "content": user_message}]
             )
             raw = response.content[0].text.strip()
