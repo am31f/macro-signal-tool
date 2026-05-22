@@ -224,6 +224,130 @@ class TelegramNotifier:
 
         return await self.send_message(text)
 
+    # ── Alert: segnale PEAD ───────────────────────────────────────────────────
+    async def send_pead_signal_alert(self, signal: dict) -> bool:
+        """
+        Invia alert per un nuovo segnale PEAD (K-PEAD-YYYY-NNNN).
+        Formato distinto dalla pipeline macro — badge [EARNINGS] invece di [MACRO].
+        """
+        conf = signal.get("confidence_base", 0)
+        if conf < 0.50:
+            return False  # sotto soglia minima
+
+        ticker    = signal.get("ticker", "?")
+        direction = signal.get("direction", "?")
+        sue       = signal.get("sue_score", 0)
+        eps_surp  = signal.get("eps_surprise_pct", 0)
+        sector    = signal.get("sector", "–")
+        size_eur  = signal.get("position_size_eur", 0)
+        stop      = signal.get("stop_price", 0)
+        target    = signal.get("target_price", 0)
+        hold      = signal.get("hold_days_target", 30)
+        signal_id = signal.get("signal_id", "K-PEAD")
+        kelly     = signal.get("kelly_quality", "–")
+        k_emoji   = KELLY_EMOJI.get(kelly, "⚪")
+        macro_boost = signal.get("macro_regime_boost", False)
+        macro_note  = signal.get("macro_regime_note", "")
+
+        dir_arrow = "📈" if direction == "LONG" else "📉"
+        eps_sign  = "+" if eps_surp >= 0 else ""
+        boost_line = f"\n📡 <b>Macro boost:</b> {macro_note}" if macro_boost else ""
+
+        text = (
+            f"📊 <b>[EARNINGS] {signal_id}</b>\n\n"
+            f"{dir_arrow} <b>{ticker}</b> — {direction}\n"
+            f"<b>Settore:</b> {sector}\n\n"
+            f"<b>EPS surprise:</b> {eps_sign}{eps_surp:.1f}%\n"
+            f"<b>SUE score:</b> {sue:.2f}σ\n"
+            f"<b>Confidence:</b> {int(conf * 100)}%  {k_emoji} {kelly}\n"
+            f"{boost_line}\n"
+            f"<b>Size:</b> €{size_eur:.0f} | <b>Hold:</b> {hold}g\n"
+            f"<b>Stop:</b> {stop:.3f} → <b>Target:</b> {target:.3f}\n\n"
+            f"<i>Strategia PEAD — Post-Earnings Drift</i>"
+        )
+        return await self.send_message(text)
+
+    # ── Diagnostica PEAD: scan completato, 0 segnali ─────────────────────────
+    async def send_pead_scan_report(self, report: dict) -> bool:
+        """
+        Invia un messaggio di diagnostica quando il PEAD scan gira correttamente
+        ma non genera segnali. Conferma che il programma ha funzionato e spiega
+        perché nessun setup è stato trovato.
+
+        `report` è un dict serializzato da ScanReport (o direttamente un ScanReport).
+        """
+        # Supporta sia dict che dataclass
+        if hasattr(report, "__dict__"):
+            report = report.__dict__
+
+        scanned_at   = report.get("scanned_at", "")
+        lookback     = report.get("lookback_days", "?")
+        total        = report.get("total_scanned", 0)
+        with_earn    = report.get("with_recent_earnings", 0)
+        signals      = report.get("signals_generated", 0)
+        no_data      = report.get("skipped_no_data", 0)
+        skipped_date = report.get("skipped_date", 0)
+        f1_fail      = report.get("skipped_f1_sue", 0)
+        f2_fail      = report.get("skipped_f2_mktcap", 0)
+        tickers      = report.get("ticker_results", [])
+
+        # Formatta la data in modo leggibile
+        try:
+            from datetime import datetime, timezone
+            dt = datetime.fromisoformat(scanned_at).astimezone(timezone.utc)
+            scan_ts = dt.strftime("%d/%m/%Y %H:%M UTC")
+        except Exception:
+            scan_ts = scanned_at[:16] if scanned_at else "–"
+
+        # Costruisce il dettaglio per i ticker con earnings recenti (max 8)
+        detail_lines = ""
+        if tickers:
+            lines = []
+            for tr in tickers[:8]:
+                if isinstance(tr, dict):
+                    tick     = tr.get("ticker", "?")
+                    reason   = tr.get("fail_reason", "–")
+                    eps_surp = tr.get("eps_surprise_pct", 0)
+                    sue      = tr.get("sue_score", 0)
+                    passed   = tr.get("passed", False)
+                else:
+                    tick     = getattr(tr, "ticker", "?")
+                    reason   = getattr(tr, "fail_reason", "–")
+                    eps_surp = getattr(tr, "eps_surprise_pct", 0)
+                    sue      = getattr(tr, "sue_score", 0)
+                    passed   = getattr(tr, "passed", False)
+
+                if passed:
+                    lines.append(f"  ✦ <b>{tick}</b> — segnale generato")
+                else:
+                    sign = "+" if eps_surp >= 0 else ""
+                    lines.append(
+                        f"  · <code>{tick}</code>  EPS {sign}{eps_surp:.1f}%  SUE {sue:.2f}σ\n"
+                        f"    <i>{reason}</i>"
+                    )
+            detail_lines = "\n".join(lines)
+            if len(tickers) > 8:
+                detail_lines += f"\n  <i>… altri {len(tickers)-8} ticker con earnings recenti</i>"
+
+        text = (
+            f"📋 <b>PEAD scan completato — {scan_ts}</b>\n\n"
+            f"Lookback: {lookback}g | Analizzati: {total} ticker\n"
+            f"Con earnings recenti: <b>{with_earn}</b> | Segnali generati: <b>{signals}</b>\n\n"
+        )
+
+        if with_earn == 0:
+            text += "<i>Nessun earnings nel watchlist entro la finestra di lookback.</i>\n"
+        elif signals == 0:
+            text += "I setup trovati non superano i filtri di qualità:\n\n"
+            text += detail_lines + "\n"
+
+        text += (
+            f"\n<b>Filtri attivi:</b>  F1 SUE ≥ 2.0σ  ·  F2 cap $0.5B–$100B\n"
+            f"<i>Nessuna azione richiesta. Il programma ha girato correttamente.</i>"
+        )
+
+        return await self.send_message(text)
+
     # ── Alert: segnale di allerta su posizione aperta ─────────────────────────
     async def send_position_warning(self, position: dict, warning_type: str) -> bool:
         """
@@ -424,94 +548,4 @@ class MacroSignalBot:
                 return
 
             lines = [f"⚡ <b>Segnali recenti ({len(signals)})</b>\n"]
-            for s in signals:
-                conf = int(s.get("confidence_composite", 0) * 100)
-                cat  = s.get("event_category", "?").replace("_", " ")
-                kelly = s.get("kelly_quality", "–")
-                k_e   = KELLY_EMOJI.get(kelly, "⚪")
-                headline = s.get("headline", "")[:80]
-                lines.append(
-                    f"{k_e} <b>{conf}%</b> — {cat}\n<i>{headline}…</i>"
-                )
-
-            await update.message.reply_text("\n\n".join(lines), parse_mode="HTML")
-        except Exception as e:
-            await update.message.reply_text(f"❌ Errore: {e}")
-
-
-# ── Test standalone ───────────────────────────────────────────────────────────
-async def _run_test():
-    """Test: invia messaggi di prova al bot configurato."""
-    print(f"Token configurato: {'SI' if TELEGRAM_BOT_TOKEN else 'NO'}")
-    print(f"Chat ID configurato: {'SI' if TELEGRAM_CHAT_ID else 'NO'}")
-
-    notifier = TelegramNotifier()
-
-    # Test 1: messaggio semplice
-    print("\n[Test 1] Invio messaggio di prova...")
-    ok = await notifier.send_message(
-        "🧪 <b>MacroSignalTool — Test connessione</b>\n\n"
-        "Il bot Telegram è configurato correttamente!\n"
-        f"<i>{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</i>"
-    )
-    print(f"  → {'OK' if ok else 'FALLITO (check TOKEN e CHAT_ID in .env)'}")
-
-    # Test 2: signal alert
-    print("[Test 2] Invio alert segnale di prova...")
-    fake_signal = {
-        "event_category": "ENERGY_SUPPLY_SHOCK",
-        "confidence_composite": 0.78,
-        "materiality_score": 0.81,
-        "novelty_score": 0.74,
-        "kelly_quality": "STRONG",
-        "position_size_eur": 420.0,
-        "entry_timing": "T+1",
-        "trade_type": "DIRECTIONAL",
-        "headline": "Iran announces indefinite closure of Strait of Hormuz to all non-Iranian vessels",
-        "instruments": [
-            {"ticker": "XLE", "direction": "LONG", "weight_pct": 40},
-            {"ticker": "GLD", "direction": "LONG", "weight_pct": 30},
-            {"ticker": "DAL", "direction": "SHORT", "weight_pct": 30},
-        ],
-    }
-    ok = await notifier.send_signal_alert(fake_signal)
-    print(f"  → {'OK' if ok else 'FALLITO'}")
-
-    # Test 3: trade closed
-    print("[Test 3] Invio alert trade chiuso...")
-    fake_position = {
-        "ticker": "XLE",
-        "direction": "LONG",
-        "pnl_eur": 38.50,
-        "pnl_pct": 9.16,
-        "verdict": "WIN",
-        "size_eur": 420.0,
-        "entry_price": 89.45,
-        "close_price": 97.65,
-        "holding_days": 4.2,
-        "event_category": "ENERGY_SUPPLY_SHOCK",
-    }
-    ok = await notifier.send_trade_closed(fake_position, close_reason="target_hit")
-    print(f"  → {'OK' if ok else 'FALLITO'}")
-
-    print("\nTest completati.")
-
-
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description="MacroSignalTool Telegram Bot")
-    parser.add_argument("--test", action="store_true", help="Invia messaggi di prova al bot")
-    parser.add_argument("--poll",  action="store_true", help="Avvia bot in polling mode (comandi interattivi)")
-    args = parser.parse_args()
-
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-
-    if args.test:
-        asyncio.run(_run_test())
-    elif args.poll:
-        notifier = TelegramNotifier()
-        bot = MacroSignalBot(notifier)
-        bot.run_polling()
-    else:
-        print("Usa --test per testare la connessione o --poll per avviare il bot.")
-        print("Esempio: python telegram_bot.py --test")
+  

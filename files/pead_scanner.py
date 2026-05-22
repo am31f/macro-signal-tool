@@ -162,6 +162,49 @@ class PEADSignal:
     f3_macro_passed: bool         = False
 
 
+@dataclass
+class TickerScanResult:
+    """
+    Risultato della scansione per un singolo ticker con earnings recenti.
+    Popolato anche quando il ticker NON genera un segnale, per mostrare
+    il motivo dell'esclusione nel report diagnostico.
+    """
+    ticker: str
+    earnings_date: str
+    eps_actual: float
+    eps_estimate: float
+    eps_surprise_pct: float
+    sue_score: float
+    market_cap_usd: float
+    sector: str
+    passed: bool                  # True se ha generato un PEADSignal
+    fail_reason: str              # "" se passed, altrimenti motivo human-readable
+    # es: "F1 — SUE 0.98σ sotto soglia 2.0σ (sorpresa attesa, batter il consenso è pattern)"
+    # es: "F2 — market cap $44.1B oltre limite $100B"
+
+
+@dataclass
+class ScanReport:
+    """
+    Report diagnostico dell'intera scansione PEAD.
+    Esposto via API e su Telegram quando non ci sono segnali,
+    così l'operatore sa che il programma ha girato correttamente.
+    """
+    scanned_at: str               # ISO timestamp UTC
+    lookback_days: int
+    watchlist_size: int
+    total_scanned: int            # ticker analizzati
+    with_recent_earnings: int     # ticker con earnings entro lookback
+    signals_generated: int
+    # Breakdown motivi esclusione
+    skipped_no_data: int          # dati yfinance mancanti o insufficienti
+    skipped_date: int             # earnings fuori lookback window
+    skipped_f1_sue: int           # SUE < soglia
+    skipped_f2_mktcap: int        # market cap fuori range
+    # Dettaglio per ticker con earnings recenti (anche se esclusi)
+    ticker_results: list[TickerScanResult] = field(default_factory=list)
+
+
 # ─── Contatore ID segnali ─────────────────────────────────────────────────────
 
 def _next_pead_id() -> str:
@@ -182,23 +225,107 @@ def _next_pead_id() -> str:
 
 # ─── Calcolo SUE ─────────────────────────────────────────────────────────────
 
+# Fattore per il filtro outlier sulla std storica:
+# sorprese che superano OUTLIER_FACTOR volte la mediana assoluta vengono escluse
+# prima di calcolare la deviazione standard. Evita che un singolo trimestre
+# con voci non-ricorrenti (impairment, write-down) esploda la std e azzeri il SUE.
+SUE_OUTLIER_FACTOR = 5.0
+
+
+def _build_surprise_df_from_earnings_dates(t: "yf.Ticker") -> Optional["pd.DataFrame"]:
+    """
+    Costruisce un DataFrame compatibile con earnings_history usando t.earnings_dates,
+    che yfinance aggiorna più velocemente (spesso entro ore dalla pubblicazione).
+
+    Colonne restituite: epsActual, epsEstimate  — indice: Timestamp con data earnings.
+    Ritorna None se il DataFrame è vuoto o non disponibile.
+    """
+    try:
+        ed = t.earnings_dates
+        if ed is None or ed.empty:
+            return None
+
+        # earnings_dates usa colonne "Reported EPS" e "EPS Estimate"
+        rename_map = {"Reported EPS": "epsActual", "EPS Estimate": "epsEstimate"}
+        available = {k: v for k, v in rename_map.items() if k in ed.columns}
+        if len(available) < 2:
+            return None
+
+        df = ed[list(available.keys())].rename(columns=available).copy()
+        # Ordina per data decrescente (più recente prima)
+        df = df.sort_index(ascending=False)
+        return df
+    except Exception:
+        return None
+
+
+def _filter_surprise_outliers(surprises: list[float], factor: float = SUE_OUTLIER_FACTOR) -> list[float]:
+    """
+    Rimuove outlier dalla lista di sorprese storiche prima di calcolare la std.
+
+    Logica: calcola la mediana degli |valori|; esclude qualsiasi valore il cui
+    |valore| supera factor × mediana. Se tutti i valori sono zero o la lista è
+    troppo corta, ritorna la lista originale senza modifiche.
+
+    Questo neutralizza trimestri con impairment, write-down o voci non-ricorrenti
+    che altrimenti gonfierebbero la std e farebbero collassare il SUE verso zero.
+    """
+    if len(surprises) < 3:
+        return surprises
+
+    abs_vals = [abs(x) for x in surprises]
+    # mediana degli assoluti
+    sorted_abs = sorted(abs_vals)
+    n = len(sorted_abs)
+    median_abs = (sorted_abs[n // 2 - 1] + sorted_abs[n // 2]) / 2 if n % 2 == 0 else sorted_abs[n // 2]
+
+    if median_abs == 0:
+        return surprises  # tutti zero → non filtrare
+
+    threshold = factor * median_abs
+    filtered = [x for x in surprises if abs(x) <= threshold]
+
+    # Mantieni almeno 2 valori anche se tutti superano la soglia
+    return filtered if len(filtered) >= 2 else surprises
+
+
 def _calculate_sue(ticker: str) -> Optional[EarningsSurprise]:
     """
     Scarica storico earnings da yfinance e calcola SUE.
+
+    Strategia a due livelli per massimizzare la freschezza dei dati:
+      1. Prova t.earnings_dates: si aggiorna entro ore dalla pubblicazione degli utili.
+         Se contiene dati recenti (entro lookback) viene usato come fonte primaria.
+      2. Fallback su t.earnings_history: più stabile ma aggiornato con ritardo di
+         ore/giorni. Usato quando earnings_dates non ha dati freschi.
+
+    Fix outlier std: prima di calcolare la deviazione standard delle sorprese storiche,
+    esclude i trimestri anomali (impairment, write-down) che superano 5× la mediana
+    assoluta delle sorprese precedenti. Evita che un singolo evento non-ricorrente
+    azzeri il SUE di tutti i trimestri successivi.
+
     Ritorna None se dati insufficienti o errore.
     """
     if not YFINANCE_AVAILABLE:
         return None
 
+    import statistics
+
     try:
         t = yf.Ticker(ticker)
-        earnings_hist = t.earnings_history  # DataFrame con colonne: epsActual, epsEstimate, surprisePercent
 
-        if earnings_hist is None or earnings_hist.empty:
-            return None
+        # ── Step 1: prova earnings_dates (fonte più fresca) ──────────────────
+        df = _build_surprise_df_from_earnings_dates(t)
 
-        # Ordina per data decrescente
-        df = earnings_hist.sort_index(ascending=False)
+        # ── Step 2: fallback su earnings_history ─────────────────────────────
+        if df is None or df.empty:
+            earnings_hist = t.earnings_history
+            if earnings_hist is None or earnings_hist.empty:
+                return None
+            df = earnings_hist.sort_index(ascending=False)
+
+        # Assicura ordinamento decrescente
+        df = df.sort_index(ascending=False)
 
         # Serve almeno 1 earnings recente con actual E estimate
         latest = df.iloc[0]
@@ -211,18 +338,25 @@ def _calculate_sue(ticker: str) -> Optional[EarningsSurprise]:
         eps_surprise_abs = eps_actual - eps_estimate
         eps_surprise_pct = (eps_surprise_abs / abs(eps_estimate)) * 100
 
-        # Calcola std delle sorprese storiche (ultimi 8 trimestri se disponibili)
+        # ── Calcola std delle sorprese storiche (ultimi 8 trimestri) ─────────
         history_rows = min(len(df), 8)
         if history_rows >= 3:
-            surprises = []
+            surprises_raw = []
             for i in range(1, history_rows):  # salta il più recente (già usato)
                 row = df.iloc[i]
                 a = float(row.get("epsActual", float("nan")))
                 e = float(row.get("epsEstimate", float("nan")))
                 if not pd.isna(a) and not pd.isna(e) and e != 0:
-                    surprises.append(a - e)
+                    surprises_raw.append(a - e)
+
+            # FIX: rimuovi outlier prima di calcolare la std
+            surprises = _filter_surprise_outliers(surprises_raw)
+            if len(surprises) != len(surprises_raw):
+                logger.debug(
+                    f"  {ticker}: outlier filter std — {len(surprises_raw)} → {len(surprises)} sorprese storiche"
+                )
+
             if len(surprises) >= 2:
-                import statistics
                 std_surprises = statistics.stdev(surprises)
             else:
                 std_surprises = abs(eps_estimate) * SUE_STD_PROXY_FACTOR
@@ -360,7 +494,7 @@ def scan_earnings(
     lookback_days: int = 45,
     watchlist: Optional[list] = None,
     save_cache: bool = True,
-) -> list[PEADSignal]:
+) -> tuple[list[PEADSignal], ScanReport]:
     """
     Scansiona i titoli del watchlist alla ricerca di sorprese earnings
     negli ultimi `lookback_days` giorni.
@@ -371,19 +505,35 @@ def scan_earnings(
         save_cache: se salvare i segnali trovati in pead_signals_cache.json
 
     Returns:
-        Lista di PEADSignal che hanno superato tutti i filtri
+        Tupla (lista PEADSignal che hanno superato tutti i filtri, ScanReport diagnostico).
+        Il ScanReport è popolato anche quando signals è vuoto, così l'operatore
+        può distinguere "scanner non girato" da "scanner girato ma nessun setup".
     """
     if not YFINANCE_AVAILABLE:
         logger.error("yfinance non installato. Installa con: pip install yfinance")
-        return []
+        empty_report = ScanReport(
+            scanned_at=datetime.now(timezone.utc).isoformat(),
+            lookback_days=lookback_days,
+            watchlist_size=len(watchlist or FULL_WATCHLIST),
+            total_scanned=0,
+            with_recent_earnings=0,
+            signals_generated=0,
+            skipped_no_data=0,
+            skipped_date=0,
+            skipped_f1_sue=0,
+            skipped_f2_mktcap=0,
+        )
+        return [], empty_report
 
     if watchlist is None:
         watchlist = FULL_WATCHLIST
 
     cutoff_date = date.today() - timedelta(days=lookback_days)
     signals: list[PEADSignal] = []
+    ticker_results: list[TickerScanResult] = []
     scanned = 0
     skipped_no_data = 0
+    skipped_date = 0
     skipped_f1 = 0
     skipped_f2 = 0
 
@@ -407,13 +557,32 @@ def scan_earnings(
             continue
 
         if earnings_dt < cutoff_date:
-            # Earnings troppo vecchio
+            skipped_date += 1
             continue
+
+        # Ticker con earnings recenti — da qui in poi tracciamo nel report
+        # (anche se verrà escluso da un filtro)
 
         # ── F1: SUE >= soglia ─────────────────────────────────────────────────
         if abs(surprise.sue_score) < SUE_THRESHOLD:
             skipped_f1 += 1
-            logger.debug(f"  {ticker}: F1 FAIL — SUE={surprise.sue_score:.2f} < {SUE_THRESHOLD}")
+            reason = (
+                f"F1 — SUE {surprise.sue_score:.2f}σ sotto soglia {SUE_THRESHOLD:.1f}σ "
+                f"(sorpresa {surprise.eps_surprise_pct:+.1f}% già scontata dal mercato)"
+            )
+            logger.debug(f"  {ticker}: {reason}")
+            ticker_results.append(TickerScanResult(
+                ticker=ticker,
+                earnings_date=surprise.earnings_date,
+                eps_actual=surprise.eps_actual,
+                eps_estimate=surprise.eps_estimate,
+                eps_surprise_pct=round(surprise.eps_surprise_pct, 2),
+                sue_score=round(surprise.sue_score, 3),
+                market_cap_usd=0,
+                sector="",
+                passed=False,
+                fail_reason=reason,
+            ))
             continue
 
         # ── Info ticker (market cap, nome, settore, prezzo) ───────────────────
@@ -424,6 +593,7 @@ def scan_earnings(
 
         market_cap = info.get("market_cap", 0)
         current_price = info.get("current_price", 0)
+        sector = info.get("sector", "Unknown")
 
         if current_price <= 0:
             skipped_no_data += 1
@@ -432,18 +602,43 @@ def scan_earnings(
         # ── F2: Market cap range accettabile ─────────────────────────────────
         if market_cap > MAX_MARKET_CAP_USD:
             skipped_f2 += 1
-            logger.debug(f"  {ticker}: F2 FAIL — market cap ${market_cap/1e9:.1f}B > $100B")
+            reason = f"F2 — market cap ${market_cap/1e9:.1f}B oltre limite ${MAX_MARKET_CAP_USD/1e9:.0f}B (large cap troppo efficienti)"
+            logger.debug(f"  {ticker}: {reason}")
+            ticker_results.append(TickerScanResult(
+                ticker=ticker,
+                earnings_date=surprise.earnings_date,
+                eps_actual=surprise.eps_actual,
+                eps_estimate=surprise.eps_estimate,
+                eps_surprise_pct=round(surprise.eps_surprise_pct, 2),
+                sue_score=round(surprise.sue_score, 3),
+                market_cap_usd=market_cap,
+                sector=sector,
+                passed=False,
+                fail_reason=reason,
+            ))
             continue
         if market_cap < MIN_MARKET_CAP_USD and market_cap > 0:
             skipped_f2 += 1
-            logger.debug(f"  {ticker}: F2 FAIL — market cap ${market_cap/1e6:.0f}M < $500M")
+            reason = f"F2 — market cap ${market_cap/1e6:.0f}M sotto minimo ${MIN_MARKET_CAP_USD/1e6:.0f}M (rischio illiquidità)"
+            logger.debug(f"  {ticker}: {reason}")
+            ticker_results.append(TickerScanResult(
+                ticker=ticker,
+                earnings_date=surprise.earnings_date,
+                eps_actual=surprise.eps_actual,
+                eps_estimate=surprise.eps_estimate,
+                eps_surprise_pct=round(surprise.eps_surprise_pct, 2),
+                sue_score=round(surprise.sue_score, 3),
+                market_cap_usd=market_cap,
+                sector=sector,
+                passed=False,
+                fail_reason=reason,
+            ))
             continue
 
         # ── Direzione ─────────────────────────────────────────────────────────
         direction = "LONG" if surprise.sue_score > 0 else "SHORT"
 
         # ── F3: Check regime macro (boost, non blocco) ────────────────────────
-        sector = info.get("sector", "Unknown")
         macro_boost, macro_note = _check_macro_regime_boost(direction, sector)
 
         # ── Confidence ────────────────────────────────────────────────────────
@@ -482,6 +677,19 @@ def scan_earnings(
         )
         signals.append(signal)
 
+        ticker_results.append(TickerScanResult(
+            ticker=ticker,
+            earnings_date=surprise.earnings_date,
+            eps_actual=surprise.eps_actual,
+            eps_estimate=surprise.eps_estimate,
+            eps_surprise_pct=round(surprise.eps_surprise_pct, 2),
+            sue_score=round(surprise.sue_score, 3),
+            market_cap_usd=market_cap,
+            sector=sector,
+            passed=True,
+            fail_reason="",
+        ))
+
         logger.info(
             f"  ✦ {ticker} [{direction}] SUE={surprise.sue_score:.2f} "
             f"EPS {surprise.eps_surprise_pct:+.1f}% "
@@ -489,17 +697,33 @@ def scan_earnings(
             + (" ← macro boost" if macro_boost else "")
         )
 
+    report = ScanReport(
+        scanned_at=datetime.now(timezone.utc).isoformat(),
+        lookback_days=lookback_days,
+        watchlist_size=len(watchlist),
+        total_scanned=scanned,
+        with_recent_earnings=len(ticker_results),
+        signals_generated=len(signals),
+        skipped_no_data=skipped_no_data,
+        skipped_date=skipped_date,
+        skipped_f1_sue=skipped_f1,
+        skipped_f2_mktcap=skipped_f2,
+        ticker_results=ticker_results,
+    )
+
     logger.info(f"\n=== Risultati PEAD scan ===")
-    logger.info(f"  Scansionati:       {scanned}")
-    logger.info(f"  No dati:           {skipped_no_data}")
-    logger.info(f"  F1 fail (SUE):     {skipped_f1}")
-    logger.info(f"  F2 fail (mktcap):  {skipped_f2}")
-    logger.info(f"  Segnali trovati:   {len(signals)}")
+    logger.info(f"  Scansionati:         {scanned}")
+    logger.info(f"  Con earnings recenti:{len(ticker_results)}")
+    logger.info(f"  No dati:             {skipped_no_data}")
+    logger.info(f"  Fuori window:        {skipped_date}")
+    logger.info(f"  F1 fail (SUE):       {skipped_f1}")
+    logger.info(f"  F2 fail (mktcap):    {skipped_f2}")
+    logger.info(f"  Segnali trovati:     {len(signals)}")
 
     if save_cache and signals:
         _save_signals_cache(signals)
 
-    return signals
+    return signals, report
 
 
 # ─── Calendario earnings prossimi 7 giorni ────────────────────────────────────
@@ -603,13 +827,11 @@ def load_signals_cache() -> list[dict]:
 # ─── CLI / test ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    import sys
-
     if "--test" in sys.argv:
         print("\n=== TEST PEAD Scanner ===\n")
         print("Test con 5 titoli USA...\n")
         test_list = ["ANET", "DVN", "RF", "MGM", "MCHP"]
-        results = scan_earnings(lookback_days=7, watchlist=test_list, save_cache=False)
+        results, report = scan_earnings(lookback_days=7, watchlist=test_list, save_cache=False)
 
         if results:
             for s in results:
@@ -619,9 +841,12 @@ if __name__ == "__main__":
                 print(f"    Confidence: {s.confidence_base:.2f} | Macro boost: {s.macro_regime_boost}")
                 print()
         else:
-            print("  Nessun segnale PEAD trovato (normale se non ci sono earnings recenti)")
+            print("  Nessun segnale PEAD trovato")
+            print(f"  Scansionati: {report.total_scanned} | Con earnings recenti: {report.with_recent_earnings}")
+            for tr in report.ticker_results:
+                print(f"    {tr.ticker} ({tr.earnings_date}): {tr.fail_reason}")
 
-        print("Test calendario prossimi earnings...")
+        print("\nTest calendario prossimi earnings...")
         upcoming = get_upcoming_earnings(days_ahead=7)
         print(f"  Earnings prossimi 7 giorni: {len(upcoming)}")
         for u in upcoming[:5]:
@@ -629,7 +854,11 @@ if __name__ == "__main__":
 
     else:
         # Scan completo
-        signals = scan_earnings(lookback_days=2)
+        signals, report = scan_earnings(lookback_days=2)
         print(f"\nSegnali trovati: {len(signals)}")
         for s in signals:
             print(f"  [{s.signal_id}] {s.ticker} {s.direction} SUE={s.sue_score:.2f} conf={s.confidence_base:.2f}")
+        if not signals:
+            print(f"  Scansionati: {report.total_scanned} | Con earnings recenti: {report.with_recent_earnings}")
+            for tr in report.ticker_results:
+                print(f"  {tr.ticker} ({tr.earnings_date}): {tr.fail_reason}")

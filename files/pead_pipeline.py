@@ -25,7 +25,7 @@ from typing import Optional
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
-from pead_scanner import PEADSignal, load_signals_cache, scan_earnings
+from pead_scanner import PEADSignal, ScanReport, load_signals_cache, scan_earnings
 
 # ─── yfinance per VIX ─────────────────────────────────────────────────────────
 try:
@@ -239,7 +239,7 @@ def run_pead_pipeline(
     nav_eur: float = 10000.0,
     lookback_days: int = 45,
     save_results: bool = True,
-) -> list[PEADTradeReady]:
+) -> tuple[list[PEADTradeReady], ScanReport]:
     """
     Esegue la pipeline PEAD completa:
       1. Scansiona earnings recenti (via pead_scanner)
@@ -252,16 +252,18 @@ def run_pead_pipeline(
         save_results: se salvare in cache
 
     Returns:
-        Lista di PEADTradeReady pronti per esecuzione
+        Tupla (lista PEADTradeReady pronti per esecuzione, ScanReport diagnostico).
+        Il ScanReport è sempre popolato — anche quando la lista è vuota —
+        per confermare che il programma ha girato correttamente.
     """
     logger.info(f"=== PEAD Pipeline — NAV €{nav_eur:.0f} ===")
 
     # Step 1: scan earnings
-    raw_signals = scan_earnings(lookback_days=lookback_days, save_cache=True)
+    raw_signals, scan_report = scan_earnings(lookback_days=lookback_days, save_cache=True)
 
     if not raw_signals:
         logger.info("Nessun segnale PEAD trovato dallo scanner.")
-        return []
+        return [], scan_report
 
     # Step 2: ottieni NAV reale dal DB se possibile
     try:
@@ -299,7 +301,7 @@ def run_pead_pipeline(
     if save_results and results:
         _save_results_cache(results)
 
-    return results
+    return results, scan_report
 
 
 def get_latest_pead_signals() -> list[dict]:
@@ -333,7 +335,7 @@ def _save_results_cache(results: list[PEADTradeReady]) -> None:
 # ─── CLI ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    results = run_pead_pipeline(lookback_days=3)
+    results, report = run_pead_pipeline(lookback_days=3)
     print(f"\nSegnali pronti per esecuzione: {len(results)}")
     for r in results:
         print(f"\n  [{r.signal_id}] {r.ticker} {r.direction}")
@@ -341,3 +343,8 @@ if __name__ == "__main__":
         print(f"  Entry: {r.current_price:.3f} | Stop: {r.stop_price:.3f} | Target: {r.target_price:.3f}")
         print(f"  SUE: {r.sue_score:.2f} | EPS surprise: {r.eps_surprise_pct:+.1f}%")
         print(f"  Hold: {r.hold_days_target}d | Confidence: {r.confidence_base:.2f}")
+    if not results:
+        print(f"\n  Scan completato: {report.total_scanned} ticker analizzati, "
+              f"{report.with_recent_earnings} con earnings recenti, 0 segnali generati.")
+        for tr in report.ticker_results:
+            print(f"  {tr.ticker} ({tr.earnings_date}): {tr.fail_reason}")

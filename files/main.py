@@ -166,6 +166,7 @@ _latest_pipeline_output: dict = {}
 
 # Cache PEAD in memoria
 _latest_pead_signals: list = []
+_latest_pead_report: Optional[dict] = None  # ScanReport dell'ultimo scan (serializzato)
 
 # Stato Instagram (persiste in memoria tra le richieste)
 _ig_last_post_id: Optional[str] = None
@@ -339,25 +340,48 @@ async def _scheduled_news_fetch():
 
 async def _scheduled_pead_scan():
     """Task schedulato: scansiona earnings e aggiorna cache PEAD."""
-    global _latest_pead_signals
+    global _latest_pead_signals, _latest_pead_report
     if not _pead_available:
         return
     logger.info("PEAD scan schedulato: avvio...")
     try:
-        results = await asyncio.get_event_loop().run_in_executor(
+        outcome = await asyncio.get_event_loop().run_in_executor(
             None, run_pead_pipeline
         )
+        # run_pead_pipeline ora ritorna (list[PEADTradeReady], ScanReport)
+        if isinstance(outcome, tuple):
+            results, scan_report = outcome
+        else:
+            # Retrocompatibilità: versione precedente ritornava solo la lista
+            results, scan_report = outcome, None
+
         _latest_pead_signals = results if isinstance(results, list) else []
+        _latest_pead_report  = scan_report
+
         logger.info(f"PEAD scan completato: {len(_latest_pead_signals)} segnali trovati")
-        # Telegram alert per segnali con confidence >= 0.60
+
         if _telegram:
-            for sig in _latest_pead_signals:
-                conf = sig.get("confidence_base", 0)
-                if conf >= 0.60:
-                    try:
-                        await _telegram.send_pead_signal_alert(sig)
-                    except Exception as te:
-                        logger.warning(f"Telegram PEAD alert fallito: {te}")
+            if _latest_pead_signals:
+                # Caso normale: invia alert per segnali con confidence >= 0.60
+                for sig in _latest_pead_signals:
+                    conf = sig.get("confidence_base", 0) if isinstance(sig, dict) else getattr(sig, "confidence_base", 0)
+                    if conf >= 0.60:
+                        try:
+                            await _telegram.send_pead_signal_alert(sig if isinstance(sig, dict) else sig.__dict__)
+                        except Exception as te:
+                            logger.warning(f"Telegram PEAD alert fallito: {te}")
+            elif scan_report is not None:
+                # Nessun segnale: invia report diagnostico per confermare che il programma ha girato
+                try:
+                    report_dict = scan_report.__dict__ if hasattr(scan_report, "__dict__") else scan_report
+                    # Serializza ticker_results (lista di dataclass) in lista di dict
+                    trs = report_dict.get("ticker_results", [])
+                    report_dict["ticker_results"] = [
+                        tr.__dict__ if hasattr(tr, "__dict__") else tr for tr in trs
+                    ]
+                    await _telegram.send_pead_scan_report(report_dict)
+                except Exception as te:
+                    logger.warning(f"Telegram PEAD report fallito: {te}")
     except Exception as e:
         logger.error(f"PEAD scan fallito: {e}")
 
@@ -1919,9 +1943,9 @@ async def pead_scan_get(background_tasks: BackgroundTasks):
 
 @app.get("/pead/signals", summary="Ultimi segnali PEAD")
 async def pead_signals():
-    global _latest_pead_signals
+    global _latest_pead_signals, _latest_pead_report
     if not _pead_available:
-        return {"count": 0, "signals": [], "note": "modulo PEAD non disponibile"}
+        return {"count": 0, "signals": [], "scan_report": None, "note": "modulo PEAD non disponibile"}
     # Prova a caricare da cache su disco se la cache in memoria è vuota
     if not _latest_pead_signals:
         try:
@@ -1932,49 +1956,11 @@ async def pead_signals():
                 _latest_pead_signals = cached if isinstance(cached, list) else cached.get("signals", [])
         except Exception:
             pass
-    return {"count": len(_latest_pead_signals), "signals": _latest_pead_signals}
+    return {
+        "count": len(_latest_pead_signals),
+        "signals": _latest_pead_signals,
+        "scan_report": _latest_pead_report,
+    }
 
 @app.get("/pead/calendar", summary="Prossimi earnings nel watchlist")
-async def pead_calendar(days: int = 7):
-    if not _pead_available:
-        return {"count": 0, "upcoming": [], "note": "modulo PEAD non disponibile"}
-    try:
-        upcoming = await asyncio.get_event_loop().run_in_executor(
-            None, lambda: get_upcoming_earnings(days)
-        )
-        return {"count": len(upcoming), "upcoming": upcoming, "days": days}
-    except Exception as e:
-        logger.error(f"PEAD calendar errore: {e}")
-        return {"count": 0, "upcoming": [], "error": str(e)}
-
-
-@app.get("/debug/fonts", summary="Debug: lista font disponibili su Railway")
-async def debug_fonts():
-    """Mostra quali file esistono nella cartella fonts e se Pillow li carica."""
-    from PIL import ImageFont
-    fonts_dir = Path(__file__).parent / "fonts"
-    result = {
-        "fonts_dir": str(fonts_dir),
-        "fonts_dir_exists": fonts_dir.exists(),
-        "files": [],
-        "load_test": {},
-    }
-    if fonts_dir.exists():
-        result["files"] = sorted(str(p.name) for p in fonts_dir.iterdir())
-
-    for name, size in [
-        ("CormorantGaramond-Medium.ttf", 96),
-        ("Inter-Regular.ttf", 38),
-        ("JetBrainsMono-Regular.ttf", 28),
-    ]:
-        p = fonts_dir / name
-        if p.exists():
-            try:
-                f = ImageFont.truetype(str(p), size)
-                result["load_test"][name] = "OK"
-            except Exception as ex:
-                result["load_test"][name] = f"ERROR: {ex}"
-        else:
-            result["load_test"][name] = "FILE NOT FOUND"
-
-    return result
+async def p
