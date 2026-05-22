@@ -1963,4 +1963,46 @@ async def pead_signals():
     }
 
 @app.get("/pead/calendar", summary="Prossimi earnings nel watchlist")
-async def p
+async def pead_calendar(days: int = 7):
+    if not _pead_available:
+        return {"count": 0, "upcoming": [], "note": "modulo PEAD non disponibile"}
+    try:
+        upcoming = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: get_upcoming_earnings(days)
+        )
+        return {"count": len(upcoming), "upcoming": upcoming, "days": days}
+    except Exception as e:
+        logger.error(f"PEAD calendar errore: {e}")
+        return {"count": 0, "upcoming": [], "error": str(e)}
+
+
+@app.get("/debug/fonts", summary="Debug: lista font disponibili su Railway")
+async def debug_fonts():
+    """Mostra quali file esistono nella cartella fonts e se Pillow li carica."""
+    from PIL import ImageFont
+    fonts_dir = Path(__file__).parent / "fonts"
+    result = {
+        "fonts_dir": str(fonts_dir),
+        "fonts_dir_exists": fonts_dir.exists(),
+        "files": [],
+        "load_test": {},
+    }
+    if fonts_dir.exists():
+        result["files"] = sorted(str(p.name) for p in fonts_dir.iterdir())
+
+    for name, size in [
+        ("CormorantGaramond-Medium.ttf", 96),
+        ("Inter-Regular.ttf", 38),
+        ("JetBrainsMono-Regular.ttf", 28),
+    ]:
+        p = fonts_dir / name
+        if p.exists():
+            try:
+                f = ImageFont.truetype(str(p), size)
+                result["load_test"][name] = "OK"
+            except Exception as ex:
+                result["load_test"][name] = f"ERROR: {ex}"
+        else:
+            result["load_test"][name] = "FILE NOT FOUND"
+
+    return result
