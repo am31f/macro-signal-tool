@@ -548,4 +548,185 @@ class MacroSignalBot:
                 return
 
             lines = [f"⚡ <b>Segnali recenti ({len(signals)})</b>\n"]
-  
+            for s in signals:
+                conf = int(s.get("confidence_composite", 0) * 100)
+                cat  = s.get("event_category", "?").replace("_", " ")
+                kelly = s.get("kelly_quality", "–")
+                k_e   = KELLY_EMOJI.get(kelly, "⚪")
+                headline = s.get("headline", "")[:80]
+                lines.append(
+                    f"{k_e} <b>{conf}%</b> — {cat}\n<i>{headline}…</i>"
+                )
+
+            await update.message.reply_text("\n\n".join(lines), parse_mode="HTML")
+        except Exception as e:
+            await update.message.reply_text(f"❌ Errore: {e}")
+
+
+# ── Test standalone ───────────────────────────────────────────────────────────
+async def _run_test():
+    """Test: invia messaggi di prova al bot configurato."""
+    print(f"Token configurato: {'SI' if TELEGRAM_BOT_TOKEN else 'NO'}")
+    print(f"Chat ID configurato: {'SI' if TELEGRAM_CHAT_ID else 'NO'}")
+
+    notifier = TelegramNotifier()
+
+    # Test 1: messaggio semplice
+    print("\n[Test 1] Invio messaggio di prova...")
+    ok = await notifier.send_message(
+        "🧪 <b>MacroSignalTool — Test connessione</b>\n\n"
+        "Il bot Telegram è configurato correttamente!\n"
+        f"<i>{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</i>"
+    )
+    print(f"  → {'OK' if ok else 'FALLITO (check TOKEN e CHAT_ID in .env)'}")
+
+    # Test 2: signal alert
+    print("[Test 2] Invio alert segnale di prova...")
+    fake_signal = {
+        "event_category": "ENERGY_SUPPLY_SHOCK",
+        "confidence_composite": 0.78,
+        "materiality_score": 0.81,
+        "novelty_score": 0.74,
+        "kelly_quality": "STRONG",
+        "position_size_eur": 420.0,
+        "entry_timing": "T+1",
+        "trade_type": "DIRECTIONAL",
+        "headline": "Iran announces indefinite closure of Strait of Hormuz to all non-Iranian vessels",
+        "instruments": [
+            {"ticker": "XLE", "direction": "LONG", "weight_pct": 40},
+            {"ticker": "GLD", "direction": "LONG", "weight_pct": 30},
+            {"ticker": "DAL", "direction": "SHORT", "weight_pct": 30},
+        ],
+    }
+    ok = await notifier.send_signal_alert(fake_signal)
+    print(f"  → {'OK' if ok else 'FALLITO'}")
+
+    # Test 3: trade closed
+    print("[Test 3] Invio alert trade chiuso...")
+    fake_position = {
+        "ticker": "XLE",
+        "direction": "LONG",
+        "pnl_eur": 38.50,
+        "pnl_pct": 9.16,
+        "verdict": "WIN",
+        "size_eur": 420.0,
+        "entry_price": 89.45,
+        "close_price": 97.65,
+        "holding_days": 4.2,
+        "event_category": "ENERGY_SUPPLY_SHOCK",
+    }
+    ok = await notifier.send_trade_closed(fake_position, close_reason="target_hit")
+    print(f"  → {'OK' if ok else 'FALLITO'}")
+
+    print("\nTest completati.")
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="MacroSignalTool Telegram Bot")
+    parser.add_argument("--test", action="store_true", help="Invia messaggi di prova al bot")
+    parser.add_argument("--poll",  action="store_true", help="Avvia bot in polling mode (comandi interattivi)")
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+    if args.test:
+        asyncio.run(_run_test())
+    elif args.poll:
+        notifier = TelegramNotifier()
+        bot = MacroSignalBot(notifier)
+        bot.run_polling()
+    else:
+        print("Usa --test per testare la connessione o --poll per avviare il bot.")
+        print("Esempio: python telegram_bot.py --test")
+            for s in signals:
+                conf = int(s.get("confidence_composite", 0) * 100)
+                cat  = s.get("event_category", "?").replace("_", " ")
+                kelly = s.get("kelly_quality", "–")
+                k_e   = KELLY_EMOJI.get(kelly, "⚪")
+                headline = s.get("headline", "")[:80]
+                lines.append(
+                    f"{k_e} <b>{conf}%</b> — {cat}\n<i>{headline}…</i>"
+                )
+
+            await update.message.reply_text("\n\n".join(lines), parse_mode="HTML")
+        except Exception as e:
+            await update.message.reply_text(f"❌ Errore: {e}")
+
+
+# ── Test standalone ───────────────────────────────────────────────────────────
+async def _run_test():
+    """Test: invia messaggi di prova al bot configurato."""
+    print(f"Token configurato: {'SI' if TELEGRAM_BOT_TOKEN else 'NO'}")
+    print(f"Chat ID configurato: {'SI' if TELEGRAM_CHAT_ID else 'NO'}")
+
+    notifier = TelegramNotifier()
+
+    # Test 1: messaggio semplice
+    print("\n[Test 1] Invio messaggio di prova...")
+    ok = await notifier.send_message(
+        "🧪 <b>MacroSignalTool — Test connessione</b>\n\n"
+        "Il bot Telegram è configurato correttamente!\n"
+        f"<i>{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</i>"
+    )
+    print(f"  → {'OK' if ok else 'FALLITO (check TOKEN e CHAT_ID in .env)'}")
+
+    # Test 2: signal alert
+    print("[Test 2] Invio alert segnale di prova...")
+    fake_signal = {
+        "event_category": "ENERGY_SUPPLY_SHOCK",
+        "confidence_composite": 0.78,
+        "materiality_score": 0.81,
+        "novelty_score": 0.74,
+        "kelly_quality": "STRONG",
+        "position_size_eur": 420.0,
+        "entry_timing": "T+1",
+        "trade_type": "DIRECTIONAL",
+        "headline": "Iran announces indefinite closure of Strait of Hormuz to all non-Iranian vessels",
+        "instruments": [
+            {"ticker": "XLE", "direction": "LONG", "weight_pct": 40},
+            {"ticker": "GLD", "direction": "LONG", "weight_pct": 30},
+            {"ticker": "DAL", "direction": "SHORT", "weight_pct": 30},
+        ],
+    }
+    ok = await notifier.send_signal_alert(fake_signal)
+    print(f"  → {'OK' if ok else 'FALLITO'}")
+
+    # Test 3: trade closed
+    print("[Test 3] Invio alert trade chiuso...")
+    fake_position = {
+        "ticker": "XLE",
+        "direction": "LONG",
+        "pnl_eur": 38.50,
+        "pnl_pct": 9.16,
+        "verdict": "WIN",
+        "size_eur": 420.0,
+        "entry_price": 89.45,
+        "close_price": 97.65,
+        "holding_days": 4.2,
+        "event_category": "ENERGY_SUPPLY_SHOCK",
+    }
+    ok = await notifier.send_trade_closed(fake_position, close_reason="target_hit")
+    print(f"  → {'OK' if ok else 'FALLITO'}")
+
+    print("\nTest completati.")
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="MacroSignalTool Telegram Bot")
+    parser.add_argument("--test", action="store_true", help="Invia messaggi di prova al bot")
+    parser.add_argument("--poll",  action="store_true", help="Avvia bot in polling mode (comandi interattivi)")
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+    if args.test:
+        asyncio.run(_run_test())
+    elif args.poll:
+        notifier = TelegramNotifier()
+        bot = MacroSignalBot(notifier)
+        bot.run_polling()
+    else:
+        print("Usa --test per testare la connessione o --poll per avviare il bot.")
+        print("Esempio: python telegram_bot.py --test")
