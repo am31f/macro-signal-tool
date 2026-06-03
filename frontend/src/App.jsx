@@ -286,91 +286,11 @@ function PEADPage() {
           Segnali attivi ({signals.length})
         </h2>
         {signals.length === 0 ? (
-          <div className="space-y-3">
-            {scanReport ? (
-              <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
-                {/* Intestazione */}
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="inline-block w-2 h-2 rounded-full bg-green-500"></span>
-                    <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                      Scan completato
-                    </span>
-                  </div>
-                  {scanReport.scanned_at && (
-                    <span className="text-xs text-slate-500 font-mono">
-                      {new Date(scanReport.scanned_at).toLocaleString('it-IT', {
-                        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-                      })} UTC
-                    </span>
-                  )}
-                </div>
-                {/* Contatori */}
-                <div className="grid grid-cols-3 gap-2 mb-4">
-                  {[
-                    { label: 'Analizzati',        value: scanReport.total_scanned,        color: 'text-slate-300' },
-                    { label: 'Con earnings rec.', value: scanReport.with_recent_earnings, color: 'text-yellow-300' },
-                    { label: 'Segnali generati',  value: scanReport.signals_generated,    color: scanReport.signals_generated > 0 ? 'text-green-400' : 'text-slate-400' },
-                  ].map(({ label, value, color }) => (
-                    <div key={label} className="bg-slate-700/40 rounded-lg px-3 py-2 text-center">
-                      <p className={`text-xl font-bold font-mono ${color}`}>{value ?? '–'}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">{label}</p>
-                    </div>
-                  ))}
-                </div>
-                {/* Dettaglio ticker */}
-                {scanReport.ticker_results && scanReport.ticker_results.length > 0 ? (
-                  <div>
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                      Ticker esaminati
-                    </p>
-                    <div className="space-y-2">
-                      {scanReport.ticker_results.map((tr, i) => (
-                        <div key={i} className={`rounded-lg px-3 py-2 border ${
-                          tr.passed
-                            ? 'bg-green-900/20 border-green-700/40'
-                            : 'bg-slate-700/30 border-slate-600/40'
-                        }`}>
-                          <div className="flex items-start justify-between gap-2 flex-wrap">
-                            <div className="flex items-center gap-2">
-                              {tr.passed
-                                ? <span className="text-green-400 text-xs font-bold">❆ SEGNALE</span>
-                                : <span className="text-slate-500 text-xs">–</span>
-                              }
-                              <span className="font-mono font-semibold text-yellow-300 text-sm">{tr.ticker}</span>
-                              <span className="text-xs text-slate-500">{tr.earnings_date}</span>
-                            </div>
-                            <div className="flex items-center gap-3 text-xs font-mono">
-                              <span className={tr.eps_surprise_pct >= 0 ? 'text-green-400' : 'text-red-400'}>
-                                EPS {tr.eps_surprise_pct >= 0 ? '+' : ''}{tr.eps_surprise_pct?.toFixed(1)}%
-                              </span>
-                              <span className="text-slate-400">SUE {tr.sue_score?.toFixed(2)}σ</span>
-                            </div>
-                          </div>
-                          {!tr.passed && tr.fail_reason && (
-                            <p className="text-xs text-slate-500 mt-1 leading-relaxed">{tr.fail_reason}</p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-500 text-center py-2">
-                    Nessun ticker con earnings recenti nel watchlist (lookback {scanReport.lookback_days}g)
-                  </p>
-                )}
-                <p className="text-xs text-slate-600 mt-3 text-center">
-                  Filtri attivi: F1 SUE ≥ 2.0σ · F2 cap $500M–$100B · Nessuna azione richiesta
-                </p>
-              </div>
-            ) : (
-              <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 text-center">
-                <p className="text-slate-400 text-sm">Nessun segnale PEAD attivo</p>
-                <p className="text-slate-500 text-xs mt-1">
-                  Lo scanner gira automaticamente alle 07:00 e 22:00 CET, oppure clicca "Scan earnings"
-                </p>
-              </div>
-            )}
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 text-center">
+            <p className="text-slate-400 text-sm">Nessun segnale PEAD attivo</p>
+            <p className="text-slate-500 text-xs mt-1">
+              Lo scanner gira automaticamente alle 07:00 e 22:00 CET, oppure clicca "Scan earnings"
+            </p>
           </div>
         ) : (
           <div className="grid gap-3">
@@ -438,6 +358,12 @@ function PEADPage() {
                       ✦ Macro boost: {s.macro_regime_note}
                     </div>
                   )}
+                  {/* Nota confidence bassa: alert Telegram soppresso */}
+                  {conf < 0.60 && (
+                    <div className="mt-2 text-xs text-orange-300 bg-orange-900/20 border border-orange-700/30 rounded px-2 py-1">
+                      ⚠ Confidence {(conf * 100).toFixed(0)}% — sotto soglia alert Telegram (60%). Segnale valido ma notifica non inviata.
+                    </div>
+                  )}
                   <div className="mt-2 text-xs text-slate-600 font-mono">
                     {s.signal_id} · earnings {s.earnings_date}
                   </div>
@@ -447,6 +373,99 @@ function PEADPage() {
           </div>
         )}
       </section>
+
+      {/* Dettaglio ultimo scan — sempre visibile */}
+      {scanReport && (
+        <section className="mb-6">
+          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">
+            Dettaglio ultimo scan
+          </h2>
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
+            {/* Intestazione */}
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
+                <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                  Scan completato
+                </span>
+              </div>
+              {scanReport.scanned_at && (
+                <span className="text-xs text-slate-500 font-mono">
+                  {new Date(scanReport.scanned_at).toLocaleString('it-IT', {
+                    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+                  })} UTC
+                </span>
+              )}
+            </div>
+            {/* Contatori */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+              {[
+                { label: 'Analizzati',         value: scanReport.total_scanned,        color: 'text-slate-300' },
+                { label: 'Con earnings rec.',  value: scanReport.with_recent_earnings, color: 'text-yellow-300' },
+                { label: 'Segnali generati',   value: scanReport.signals_generated,    color: scanReport.signals_generated > 0 ? 'text-green-400' : 'text-slate-400' },
+                { label: 'No dati yfinance',   value: scanReport.skipped_no_data,      color: 'text-slate-500' },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="bg-slate-700/40 rounded-lg px-3 py-2 text-center">
+                  <p className={`text-xl font-bold font-mono ${color}`}>{value ?? '–'}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{label}</p>
+                </div>
+              ))}
+            </div>
+            {/* Dettaglio ticker con earnings recenti */}
+            {scanReport.ticker_results && scanReport.ticker_results.length > 0 ? (
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                  Ticker con earnings recenti ({scanReport.ticker_results.length})
+                </p>
+                <div className="space-y-2">
+                  {scanReport.ticker_results.map((tr, i) => (
+                    <div key={i} className={`rounded-lg px-3 py-2 border ${
+                      tr.passed
+                        ? 'bg-green-900/20 border-green-700/40'
+                        : 'bg-slate-700/30 border-slate-600/40'
+                    }`}>
+                      <div className="flex items-start justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          {tr.passed
+                            ? <span className="text-green-400 text-xs font-bold">✦ SEGNALE</span>
+                            : <span className="text-red-400 text-xs font-bold">✕ SCARTATO</span>
+                          }
+                          <span className="font-mono font-semibold text-yellow-300 text-sm">{tr.ticker}</span>
+                          <span className="text-xs text-slate-500">{tr.earnings_date}</span>
+                          {tr.sector && <span className="text-xs text-slate-600">{tr.sector}</span>}
+                        </div>
+                        <div className="flex items-center gap-3 text-xs font-mono">
+                          <span className={tr.eps_surprise_pct >= 0 ? 'text-green-400' : 'text-red-400'}>
+                            EPS {tr.eps_surprise_pct >= 0 ? '+' : ''}{tr.eps_surprise_pct?.toFixed(1)}%
+                          </span>
+                          <span className={Math.abs(tr.sue_score) >= 2 ? 'text-yellow-300' : 'text-slate-400'}>
+                            SUE {tr.sue_score?.toFixed(2)}σ
+                          </span>
+                          {tr.market_cap_usd > 0 && (
+                            <span className="text-slate-500">
+                              ${(tr.market_cap_usd / 1e9).toFixed(1)}B
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {!tr.passed && tr.fail_reason && (
+                        <p className="text-xs text-slate-500 mt-1 leading-relaxed">{tr.fail_reason}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500 text-center py-2">
+                Nessun ticker con earnings recenti nel watchlist (lookback {scanReport.lookback_days}g)
+              </p>
+            )}
+            <p className="text-xs text-slate-600 mt-3 text-center">
+              Filtri: F1 SUE ≥ 2.0σ · F2 cap $500M–$100B · Alert Telegram: confidence ≥ 60%
+            </p>
+          </div>
+        </section>
+      )}
 
       {/* Calendario earnings prossimi 7 giorni */}
       <section>
