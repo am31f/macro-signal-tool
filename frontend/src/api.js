@@ -57,9 +57,11 @@ export const getPositions    = () => fetchJSON('/portfolio/positions')
 export const updatePrices    = () => fetchJSON('/portfolio/update-prices', { method: 'POST' })
 
 // ── PEAD ─────────────────────────────────────────────────────────────────────
-export const getPeadSignals  = () => fetchJSON('/pead/signals')
-export const runPeadScan     = () => fetchJSON('/pead/scan', { method: 'POST' })
-export const getPeadCalendar = (days = 7) => fetchJSON(`/pead/calendar?days=${days}`)
+export const getPeadSignals      = () => fetchJSON('/pead/signals')
+export const runPeadScan         = () => fetchJSON('/pead/scan', { method: 'POST' })
+export const getPeadCalendar     = (days = 7) => fetchJSON(`/pead/calendar?days=${days}`)
+export const deletePeadSignal    = (signalId) => fetchJSON(`/pead/signals/${signalId}`, { method: 'DELETE' })
+export const deletePeadScanResult = (ticker) => fetchJSON(`/pead/scan-results/${ticker}`, { method: 'DELETE' })
 
 // ── Performance ──────────────────────────────────────────────────────────────
 export const getPerformance  = () => fetchJSON('/performance')

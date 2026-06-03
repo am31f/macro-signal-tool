@@ -3,7 +3,7 @@ import Dashboard from './components/Dashboard.jsx'
 import SignalDetail from './components/SignalDetail.jsx'
 import Performance from './components/Performance.jsx'
 import Journal from './components/Journal.jsx'
-import { getHealth, getLatestSignals, runSignals, getPeadSignals, runPeadScan, getPeadCalendar } from './api.js'
+import { getHealth, getLatestSignals, runSignals, getPeadSignals, runPeadScan, getPeadCalendar, deletePeadSignal, deletePeadScanResult } from './api.js'
 
 // ── Icone SVG inline ─────────────────────────────────────────────────────────
 const Icon = {
@@ -204,12 +204,22 @@ function SignalsList({ onSelect }) {
 
 // ── PEADPage ──────────────────────────────────────────────────────────────────
 function PEADPage() {
-  const [signals, setSignals]       = useState([])
-  const [scanReport, setScanReport] = useState(null)
-  const [calendar, setCalendar]     = useState([])
-  const [loading, setLoading]       = useState(true)
-  const [scanning, setScanning]     = useState(false)
-  const [lastUpdate, setLastUpdate] = useState(null)
+  const [signals, setSignals]           = useState([])
+  const [scanReport, setScanReport]     = useState(null)
+  const [calendar, setCalendar]         = useState([])
+  const [loading, setLoading]           = useState(true)
+  const [scanning, setScanning]         = useState(false)
+  const [lastUpdate, setLastUpdate]     = useState(null)
+  const [deleting, setDeleting]         = useState(null)   // signal_id o ticker in corso di eliminazione
+  const [confirmDelete, setConfirmDelete] = useState(null) // { type: 'signal'|'scan', id, label }
+
+  // Filtri segnali attivi
+  const [filterDir, setFilterDir]       = useState('ALL')  // ALL | LONG | SHORT
+  const [filterKelly, setFilterKelly]   = useState('ALL')  // ALL | STRONG | MODERATE | WEAK
+
+  // Filtri ticker scartati
+  const [filterPassed, setFilterPassed] = useState('ALL')  // ALL | passed | failed
+  const [filterSector, setFilterSector] = useState('ALL')
 
   const load = useCallback(async () => {
     try {
@@ -234,17 +244,12 @@ function PEADPage() {
     setScanning(true)
     try {
       await runPeadScan()
-      // Lo scan gira in background (~2-3 min su 94 ticker)
-      // Polling ogni 15s per 3 minuti finché arrivano segnali
       let attempts = 0
       const poll = async () => {
         attempts++
         await load()
-        if (attempts < 12) {
-          setTimeout(poll, 15000)
-        } else {
-          setScanning(false)
-        }
+        if (attempts < 12) setTimeout(poll, 15000)
+        else setScanning(false)
       }
       setTimeout(poll, 10000)
     } catch (e) {
@@ -253,7 +258,65 @@ function PEADPage() {
     }
   }
 
+  const handleDeleteSignal = async (signalId, label) => {
+    if (confirmDelete?.id === signalId) {
+      // Secondo click: conferma ed esegui
+      setDeleting(signalId)
+      setConfirmDelete(null)
+      try {
+        await deletePeadSignal(signalId)
+        setSignals(prev => prev.filter(s => (s.signal_id ?? s) !== signalId))
+      } catch (e) {
+        alert(`Errore eliminazione: ${e.message}`)
+      } finally {
+        setDeleting(null)
+      }
+    } else {
+      // Primo click: chiedi conferma
+      setConfirmDelete({ type: 'signal', id: signalId, label })
+      setTimeout(() => setConfirmDelete(null), 4000) // annulla dopo 4s
+    }
+  }
+
+  const handleDeleteScanResult = async (ticker) => {
+    if (confirmDelete?.id === ticker) {
+      setDeleting(ticker)
+      setConfirmDelete(null)
+      try {
+        await deletePeadScanResult(ticker)
+        setScanReport(prev => prev ? {
+          ...prev,
+          ticker_results: (prev.ticker_results || []).filter(tr => tr.ticker !== ticker),
+        } : prev)
+      } catch (e) {
+        alert(`Errore eliminazione: ${e.message}`)
+      } finally {
+        setDeleting(null)
+      }
+    } else {
+      setConfirmDelete({ type: 'scan', id: ticker, label: ticker })
+      setTimeout(() => setConfirmDelete(null), 4000)
+    }
+  }
+
   if (loading) return <LoadingSpinner label="Caricamento PEAD..." />
+
+  // Segnali filtrati
+  const filteredSignals = signals.filter(s => {
+    if (filterDir !== 'ALL' && s.direction !== filterDir) return false
+    if (filterKelly !== 'ALL' && s.kelly_quality !== filterKelly) return false
+    return true
+  })
+
+  // Ticker scartati filtrati
+  const allTickers = scanReport?.ticker_results || []
+  const sectors = [...new Set(allTickers.map(t => t.sector).filter(Boolean))]
+  const filteredTickers = allTickers.filter(tr => {
+    if (filterPassed === 'passed' && !tr.passed) return false
+    if (filterPassed === 'failed' && tr.passed) return false
+    if (filterSector !== 'ALL' && tr.sector !== filterSector) return false
+    return true
+  })
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto">
@@ -282,9 +345,34 @@ function PEADPage() {
 
       {/* Segnali attivi */}
       <section className="mb-6">
-        <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">
-          Segnali attivi ({signals.length})
-        </h2>
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+            Segnali attivi ({filteredSignals.length}{filteredSignals.length !== signals.length ? ` / ${signals.length}` : ''})
+          </h2>
+          {signals.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Filtro direzione */}
+              <div className="flex rounded-lg overflow-hidden border border-slate-600 text-xs">
+                {['ALL','LONG','SHORT'].map(v => (
+                  <button key={v} onClick={() => setFilterDir(v)}
+                    className={`px-2.5 py-1 font-medium transition-colors ${filterDir === v ? 'bg-yellow-700 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}>
+                    {v === 'ALL' ? 'Dir.' : v}
+                  </button>
+                ))}
+              </div>
+              {/* Filtro kelly */}
+              <div className="flex rounded-lg overflow-hidden border border-slate-600 text-xs">
+                {['ALL','STRONG','MODERATE','WEAK'].map(v => (
+                  <button key={v} onClick={() => setFilterKelly(v)}
+                    className={`px-2.5 py-1 font-medium transition-colors ${filterKelly === v ? 'bg-yellow-700 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}>
+                    {v === 'ALL' ? 'Kelly' : v.charAt(0) + v.slice(1).toLowerCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
         {signals.length === 0 ? (
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 text-center">
             <p className="text-slate-400 text-sm">Nessun segnale PEAD attivo</p>
@@ -292,81 +380,71 @@ function PEADPage() {
               Lo scanner gira automaticamente alle 07:00 e 22:00 CET, oppure clicca "Scan earnings"
             </p>
           </div>
+        ) : filteredSignals.length === 0 ? (
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 text-center">
+            <p className="text-slate-500 text-xs">Nessun segnale corrisponde ai filtri selezionati</p>
+          </div>
         ) : (
           <div className="grid gap-3">
-            {signals.map((s, i) => {
+            {filteredSignals.map((s, i) => {
               const conf = s.confidence_base ?? 0
               const confColor = conf >= 0.65 ? 'text-green-400' : conf >= 0.52 ? 'text-yellow-400' : 'text-slate-400'
               const dirColor = s.direction === 'LONG' ? 'bg-green-900/60 text-green-300' : 'bg-red-900/60 text-red-300'
               const kellyColor = { STRONG: 'text-green-400', MODERATE: 'text-yellow-400', WEAK: 'text-orange-400' }
+              const isDeleting = deleting === s.signal_id
+              const isConfirming = confirmDelete?.id === s.signal_id
               return (
                 <div key={i} className="bg-slate-800 border border-yellow-700/30 rounded-xl p-4">
                   <div className="flex items-start justify-between gap-3 mb-2">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-800/60 text-yellow-300 font-medium">
-                        EARNINGS
-                      </span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${dirColor}`}>
-                        {s.direction}
-                      </span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-800/60 text-yellow-300 font-medium">EARNINGS</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${dirColor}`}>{s.direction}</span>
                       <span className="font-semibold text-white">{s.ticker}</span>
                       <span className="text-xs text-slate-400">{s.company_name}</span>
                     </div>
-                    <div className="text-right shrink-0">
-                      <div className={`text-lg font-bold ${confColor}`}>{(conf * 100).toFixed(0)}%</div>
-                      <div className="text-xs text-slate-500">confidence</div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <div className="text-right">
+                        <div className={`text-lg font-bold ${confColor}`}>{(conf * 100).toFixed(0)}%</div>
+                        <div className="text-xs text-slate-500">confidence</div>
+                      </div>
+                      {/* Bottone elimina */}
+                      <button
+                        onClick={() => handleDeleteSignal(s.signal_id, s.ticker)}
+                        disabled={isDeleting}
+                        title={isConfirming ? 'Clicca ancora per confermare' : 'Elimina segnale'}
+                        className={`p-1.5 rounded-lg text-xs font-medium transition-colors ${
+                          isConfirming
+                            ? 'bg-red-600 text-white animate-pulse'
+                            : 'bg-slate-700 text-slate-400 hover:bg-red-900/60 hover:text-red-300'
+                        }`}
+                      >
+                        {isDeleting ? '⏳' : isConfirming ? 'Conferma?' : '✕'}
+                      </button>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs mt-2">
-                    <div>
-                      <span className="text-slate-500">SUE score</span>
-                      <p className="text-white font-mono font-medium">{s.sue_score?.toFixed(2)}σ</p>
-                    </div>
-                    <div>
-                      <span className="text-slate-500">EPS surprise</span>
+                    <div><span className="text-slate-500">SUE score</span><p className="text-white font-mono font-medium">{s.sue_score?.toFixed(2)}σ</p></div>
+                    <div><span className="text-slate-500">EPS surprise</span>
                       <p className={`font-mono font-medium ${s.eps_surprise_pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {s.eps_surprise_pct >= 0 ? '+' : ''}{s.eps_surprise_pct?.toFixed(1)}%
                       </p>
                     </div>
-                    <div>
-                      <span className="text-slate-500">Size</span>
-                      <p className="text-sky-400 font-medium">€{s.position_size_eur?.toFixed(0) ?? '–'}</p>
-                    </div>
-                    <div>
-                      <span className="text-slate-500">Kelly</span>
-                      <p className={kellyColor[s.kelly_quality] || 'text-slate-400'}>{s.kelly_quality ?? '–'}</p>
-                    </div>
-                    <div>
-                      <span className="text-slate-500">Stop</span>
-                      <p className="text-red-400 font-mono">{s.stop_price?.toFixed(3)}</p>
-                    </div>
-                    <div>
-                      <span className="text-slate-500">Target</span>
-                      <p className="text-green-400 font-mono">{s.target_price?.toFixed(3)}</p>
-                    </div>
-                    <div>
-                      <span className="text-slate-500">Hold</span>
-                      <p className="text-slate-300">{s.hold_days_target}g</p>
-                    </div>
-                    <div>
-                      <span className="text-slate-500">Settore</span>
-                      <p className="text-slate-300 truncate">{s.sector ?? '–'}</p>
-                    </div>
+                    <div><span className="text-slate-500">Size</span><p className="text-sky-400 font-medium">€{s.position_size_eur?.toFixed(0) ?? '–'}</p></div>
+                    <div><span className="text-slate-500">Kelly</span><p className={kellyColor[s.kelly_quality] || 'text-slate-400'}>{s.kelly_quality ?? '–'}</p></div>
+                    <div><span className="text-slate-500">Stop</span><p className="text-red-400 font-mono">{s.stop_price?.toFixed(3)}</p></div>
+                    <div><span className="text-slate-500">Target</span><p className="text-green-400 font-mono">{s.target_price?.toFixed(3)}</p></div>
+                    <div><span className="text-slate-500">Hold</span><p className="text-slate-300">{s.hold_days_target}g</p></div>
+                    <div><span className="text-slate-500">Settore</span><p className="text-slate-300 truncate">{s.sector ?? '–'}</p></div>
                   </div>
                   {s.macro_regime_boost && (
-                    <div className="mt-2 text-xs text-yellow-300 bg-yellow-900/20 rounded px-2 py-1">
-                      ✦ Macro boost: {s.macro_regime_note}
-                    </div>
+                    <div className="mt-2 text-xs text-yellow-300 bg-yellow-900/20 rounded px-2 py-1">✦ Macro boost: {s.macro_regime_note}</div>
                   )}
-                  {/* Nota confidence bassa: alert Telegram soppresso */}
                   {conf < 0.60 && (
                     <div className="mt-2 text-xs text-orange-300 bg-orange-900/20 border border-orange-700/30 rounded px-2 py-1">
                       ⚠ Confidence {(conf * 100).toFixed(0)}% — sotto soglia alert Telegram (60%). Segnale valido ma notifica non inviata.
                     </div>
                   )}
-                  <div className="mt-2 text-xs text-slate-600 font-mono">
-                    {s.signal_id} · earnings {s.earnings_date}
-                  </div>
+                  <div className="mt-2 text-xs text-slate-600 font-mono">{s.signal_id} · earnings {s.earnings_date}</div>
                 </div>
               )
             })}
@@ -377,17 +455,42 @@ function PEADPage() {
       {/* Dettaglio ultimo scan — sempre visibile */}
       {scanReport && (
         <section className="mb-6">
-          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">
-            Dettaglio ultimo scan
-          </h2>
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+              Dettaglio ultimo scan
+            </h2>
+            {allTickers.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Filtro passed/failed */}
+                <div className="flex rounded-lg overflow-hidden border border-slate-600 text-xs">
+                  {[['ALL','Tutti'],['passed','✦ Segnali'],['failed','✕ Scartati']].map(([v, label]) => (
+                    <button key={v} onClick={() => setFilterPassed(v)}
+                      className={`px-2.5 py-1 font-medium transition-colors ${filterPassed === v ? 'bg-yellow-700 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {/* Filtro settore */}
+                {sectors.length > 1 && (
+                  <select
+                    value={filterSector}
+                    onChange={e => setFilterSector(e.target.value)}
+                    className="bg-slate-800 border border-slate-600 text-slate-300 text-xs rounded-lg px-2 py-1 focus:outline-none focus:border-yellow-600"
+                  >
+                    <option value="ALL">Tutti i settori</option>
+                    {sectors.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
             {/* Intestazione */}
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
-                <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                  Scan completato
-                </span>
+                <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Scan completato</span>
               </div>
               {scanReport.scanned_at && (
                 <span className="text-xs text-slate-500 font-mono">
@@ -397,13 +500,14 @@ function PEADPage() {
                 </span>
               )}
             </div>
+
             {/* Contatori */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
               {[
-                { label: 'Analizzati',         value: scanReport.total_scanned,        color: 'text-slate-300' },
-                { label: 'Con earnings rec.',  value: scanReport.with_recent_earnings, color: 'text-yellow-300' },
-                { label: 'Segnali generati',   value: scanReport.signals_generated,    color: scanReport.signals_generated > 0 ? 'text-green-400' : 'text-slate-400' },
-                { label: 'No dati yfinance',   value: scanReport.skipped_no_data,      color: 'text-slate-500' },
+                { label: 'Analizzati',        value: scanReport.total_scanned,        color: 'text-slate-300' },
+                { label: 'Con earnings rec.', value: scanReport.with_recent_earnings, color: 'text-yellow-300' },
+                { label: 'Segnali generati',  value: scanReport.signals_generated,    color: scanReport.signals_generated > 0 ? 'text-green-400' : 'text-slate-400' },
+                { label: 'No dati yfinance',  value: scanReport.skipped_no_data,      color: 'text-slate-500' },
               ].map(({ label, value, color }) => (
                 <div key={label} className="bg-slate-700/40 rounded-lg px-3 py-2 text-center">
                   <p className={`text-xl font-bold font-mono ${color}`}>{value ?? '–'}</p>
@@ -411,55 +515,74 @@ function PEADPage() {
                 </div>
               ))}
             </div>
-            {/* Dettaglio ticker con earnings recenti */}
-            {scanReport.ticker_results && scanReport.ticker_results.length > 0 ? (
+
+            {/* Dettaglio ticker */}
+            {filteredTickers.length > 0 ? (
               <div>
                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                  Ticker con earnings recenti ({scanReport.ticker_results.length})
+                  Ticker esaminati ({filteredTickers.length}{filteredTickers.length !== allTickers.length ? ` / ${allTickers.length}` : ''})
                 </p>
                 <div className="space-y-2">
-                  {scanReport.ticker_results.map((tr, i) => (
-                    <div key={i} className={`rounded-lg px-3 py-2 border ${
-                      tr.passed
-                        ? 'bg-green-900/20 border-green-700/40'
-                        : 'bg-slate-700/30 border-slate-600/40'
-                    }`}>
-                      <div className="flex items-start justify-between gap-2 flex-wrap">
-                        <div className="flex items-center gap-2">
-                          {tr.passed
-                            ? <span className="text-green-400 text-xs font-bold">✦ SEGNALE</span>
-                            : <span className="text-red-400 text-xs font-bold">✕ SCARTATO</span>
-                          }
-                          <span className="font-mono font-semibold text-yellow-300 text-sm">{tr.ticker}</span>
-                          <span className="text-xs text-slate-500">{tr.earnings_date}</span>
-                          {tr.sector && <span className="text-xs text-slate-600">{tr.sector}</span>}
+                  {filteredTickers.map((tr, i) => {
+                    const isDeleting = deleting === tr.ticker
+                    const isConfirming = confirmDelete?.id === tr.ticker
+                    return (
+                      <div key={i} className={`rounded-lg px-3 py-2 border ${
+                        tr.passed ? 'bg-green-900/20 border-green-700/40' : 'bg-slate-700/30 border-slate-600/40'
+                      }`}>
+                        <div className="flex items-start justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {tr.passed
+                              ? <span className="text-green-400 text-xs font-bold">✦ SEGNALE</span>
+                              : <span className="text-red-400 text-xs font-bold">✕ SCARTATO</span>
+                            }
+                            <span className="font-mono font-semibold text-yellow-300 text-sm">{tr.ticker}</span>
+                            <span className="text-xs text-slate-500">{tr.earnings_date}</span>
+                            {tr.sector && <span className="text-xs text-slate-600">{tr.sector}</span>}
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-3 text-xs font-mono">
+                              <span className={tr.eps_surprise_pct >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                EPS {tr.eps_surprise_pct >= 0 ? '+' : ''}{tr.eps_surprise_pct?.toFixed(1)}%
+                              </span>
+                              <span className={Math.abs(tr.sue_score) >= 2 ? 'text-yellow-300' : 'text-slate-400'}>
+                                SUE {tr.sue_score?.toFixed(2)}σ
+                              </span>
+                              {tr.market_cap_usd > 0 && (
+                                <span className="text-slate-500">${(tr.market_cap_usd / 1e9).toFixed(1)}B</span>
+                              )}
+                            </div>
+                            {/* Bottone elimina */}
+                            <button
+                              onClick={() => handleDeleteScanResult(tr.ticker)}
+                              disabled={isDeleting}
+                              title={isConfirming ? 'Clicca ancora per confermare' : 'Rimuovi dal report'}
+                              className={`p-1 rounded text-xs transition-colors ${
+                                isConfirming
+                                  ? 'bg-red-600 text-white animate-pulse'
+                                  : 'text-slate-600 hover:text-red-400 hover:bg-red-900/30'
+                              }`}
+                            >
+                              {isDeleting ? '⏳' : isConfirming ? 'Sì?' : '✕'}
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-3 text-xs font-mono">
-                          <span className={tr.eps_surprise_pct >= 0 ? 'text-green-400' : 'text-red-400'}>
-                            EPS {tr.eps_surprise_pct >= 0 ? '+' : ''}{tr.eps_surprise_pct?.toFixed(1)}%
-                          </span>
-                          <span className={Math.abs(tr.sue_score) >= 2 ? 'text-yellow-300' : 'text-slate-400'}>
-                            SUE {tr.sue_score?.toFixed(2)}σ
-                          </span>
-                          {tr.market_cap_usd > 0 && (
-                            <span className="text-slate-500">
-                              ${(tr.market_cap_usd / 1e9).toFixed(1)}B
-                            </span>
-                          )}
-                        </div>
+                        {!tr.passed && tr.fail_reason && (
+                          <p className="text-xs text-slate-500 mt-1 leading-relaxed">{tr.fail_reason}</p>
+                        )}
                       </div>
-                      {!tr.passed && tr.fail_reason && (
-                        <p className="text-xs text-slate-500 mt-1 leading-relaxed">{tr.fail_reason}</p>
-                      )}
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
-            ) : (
+            ) : allTickers.length === 0 ? (
               <p className="text-xs text-slate-500 text-center py-2">
                 Nessun ticker con earnings recenti nel watchlist (lookback {scanReport.lookback_days}g)
               </p>
+            ) : (
+              <p className="text-xs text-slate-500 text-center py-2">Nessun ticker corrisponde ai filtri selezionati</p>
             )}
+
             <p className="text-xs text-slate-600 mt-3 text-center">
               Filtri: F1 SUE ≥ 2.0σ · F2 cap $500M–$100B · Alert Telegram: confidence ≥ 60%
             </p>

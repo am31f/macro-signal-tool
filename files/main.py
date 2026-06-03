@@ -1962,6 +1962,69 @@ async def pead_signals():
         "scan_report": _latest_pead_report,
     }
 
+@app.delete("/pead/signals/{signal_id}", summary="Elimina segnale PEAD dalla cache")
+async def pead_delete_signal(signal_id: str):
+    """
+    Rimuove un segnale K-PEAD dalla cache su disco e dalla memoria.
+    Utile per fare pulizia di segnali vecchi o non rilevanti.
+    """
+    global _latest_pead_signals
+    deleted = False
+
+    # Rimuovi da memoria
+    before = len(_latest_pead_signals)
+    _latest_pead_signals = [
+        s for s in _latest_pead_signals
+        if (s.get("signal_id") if isinstance(s, dict) else getattr(s, "signal_id", None)) != signal_id
+    ]
+    if len(_latest_pead_signals) < before:
+        deleted = True
+
+    # Rimuovi dalla cache su disco (pead_results_cache.json)
+    try:
+        cache_path = DATA_DIR / "pead_results_cache.json"
+        if cache_path.exists():
+            data = json.loads(cache_path.read_text())
+            signals = data.get("signals", []) if isinstance(data, dict) else data
+            new_signals = [s for s in signals if s.get("signal_id") != signal_id]
+            if len(new_signals) < len(signals):
+                deleted = True
+            cache_path.write_text(json.dumps({
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "count": len(new_signals),
+                "signals": new_signals,
+            }, indent=2, ensure_ascii=False))
+    except Exception as e:
+        logger.warning(f"Errore eliminazione segnale PEAD {signal_id} da cache: {e}")
+
+    if not deleted:
+        raise HTTPException(404, f"Segnale {signal_id} non trovato")
+    return {"status": "deleted", "signal_id": signal_id}
+
+
+@app.delete("/pead/scan-results/{ticker}", summary="Elimina ticker dal report scan PEAD")
+async def pead_delete_scan_result(ticker: str):
+    """
+    Rimuove un ticker dal ticker_results dell'ultimo scan_report.
+    Non tocca i segnali attivi — opera solo sul report diagnostico.
+    """
+    global _latest_pead_report
+    deleted = False
+
+    if _latest_pead_report is not None:
+        report = _latest_pead_report if isinstance(_latest_pead_report, dict) else _latest_pead_report.__dict__
+        trs = report.get("ticker_results", [])
+        new_trs = [tr for tr in trs if (tr.get("ticker") if isinstance(tr, dict) else getattr(tr, "ticker", None)) != ticker.upper()]
+        if len(new_trs) < len(trs):
+            deleted = True
+            report["ticker_results"] = new_trs
+            _latest_pead_report = report
+
+    if not deleted:
+        raise HTTPException(404, f"Ticker {ticker} non trovato nel report")
+    return {"status": "deleted", "ticker": ticker.upper()}
+
+
 @app.get("/pead/calendar", summary="Prossimi earnings nel watchlist")
 async def pead_calendar(days: int = 7):
     if not _pead_available:
